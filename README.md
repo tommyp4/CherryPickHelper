@@ -43,12 +43,15 @@ This script scans the Git history of all relevant branches and creates an Excel 
 ```powershell
 py pullRequestHelper.py
 ```
-**Output:** `cherrypick_list.xlsx`
-- **In Release?**: Shows if the work is already there (Exact Match, Jira Match, or Likely).
-- **Jira Link**: Clickable link to the Atlassian ticket.
-- **cherry pick?**: Automatically pre-filled (`yes` if missing, `no` if present, `blank` if likely).
 
-### Step 3: Review the Excel File
+### Step 3: Fetch Jira Fix Versions (Optional)
+This script updates the Excel file with the "Fix Version" from Jira for each ticket.
+```powershell
+py jiraHelper.py
+```
+**Output:** Updates `cherrypick_list.xlsx` with a new column.
+
+### Step 4: Review the Excel File
 1. Open `cherrypick_list.xlsx`.
 2. Review any rows where the `cherry pick?` column is **blank** (Likely matches).
 3. Type `yes` for any additional commits you want to move.
