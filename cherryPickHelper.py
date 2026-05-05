@@ -30,7 +30,7 @@ def main():
             print(f"Error: Column 'cherry pick?' not found in {excel_file}")
             return
     else:
-        print(f"{excel_file} not found. Use pullrequesthelper.py to generate it.")
+        print(f"{excel_file} not found. Use pullRequestHelper.py to generate it.")
         # Fallback to hardcoded list if desired (currently empty in previous turn)
         # pr_ids = [] 
         # ... (old logic could go here if needed)
