@@ -1,11 +1,7 @@
 import os, re
 from jira import JIRA
 from openpyxl import load_workbook
-from dotenv import load_dotenv
 import config
-
-# Load secrets from .env
-load_dotenv()
 
 def extract_jira_id_from_link(link_formula):
     """Extracts the ID from an Excel HYPERLINK formula."""
