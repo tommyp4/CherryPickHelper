@@ -4,6 +4,9 @@ from azure.devops.connection import Connection
 from msrest.authentication import BasicAuthentication
 import config
 
+# === RUNTIME DATA ===
+pr_ids = []
+
 # === AUTHENTICATION ===
 credentials = BasicAuthentication('', config.personal_access_token)
 connection = Connection(base_url=config.organization_url, creds=credentials)
