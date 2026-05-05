@@ -29,7 +29,7 @@ def main():
         repository_id=repo.id,
         search_criteria=search_criteria,
         project=config.project_name,
-        top=100
+        top=500
     )
 
     # === COLLECT UNIQUE NAMES ===
@@ -53,7 +53,7 @@ def main():
     if not missing_authors:
         print("✅ Success: All authors in config were found in recent PR history.")
     else:
-        print("⚠️  Warning: The following authors in your config were NOT found in the last 100 PRs:")
+        print("⚠️  Warning: The following authors in your config were NOT found in the last 500 PRs:")
         for author in missing_authors:
             print(f"  - {author}")
         
