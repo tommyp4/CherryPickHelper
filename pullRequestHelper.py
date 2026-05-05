@@ -12,18 +12,18 @@ def get_first_line(msg):
 
 def clean_subject(subject):
     subject = re.sub(r'^Merged PR \d+: ', '', subject, flags=re.IGNORECASE)
-    # Remove Jira IDs with hyphens or underscores
-    subject = re.sub(r'ALP[-_]\d+', '', subject, flags=re.IGNORECASE)
+    # Remove Jira IDs with hyphens, underscores, or no separator
+    subject = re.sub(r'ALP[-_]?\d+', '', subject, flags=re.IGNORECASE)
     subject = re.sub(r'^Revert\s+"?', '', subject, flags=re.IGNORECASE)
     subject = re.sub(r'[^\w\s]', '', subject)
     return subject.strip().lower()
 
 def extract_jira_id(text):
-    # Match ALP-##### or ALP_#####
-    match = re.search(r'(ALP[-_]\d+)', str(text), re.IGNORECASE)
+    # Match ALP-#####, ALP_#####, or ALP#####
+    match = re.search(r'ALP[-_]?(\d+)', str(text), re.IGNORECASE)
     if match:
-        # Standardize to hyphen format
-        return match.group(1).upper().replace('_', '-')
+        # Standardize to ALP-##### format
+        return f"ALP-{match.group(1)}"
     return None
 
 def get_matched_config_author(repo_name, target_list):
