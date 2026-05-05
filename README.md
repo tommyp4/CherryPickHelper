@@ -26,7 +26,7 @@ An automated toolset to identify missing code changes from `develop` and batch c
    - `check_target_branch`: The release branch to check for existing work (e.g., `release/26.01.00`).
    - `cherry_pick_base_branch`: The branch to start your new work from (e.g., `release/26.01.01`).
    - `start_date`: How far back to look (format: `YYYY-MM-DD HH:MM`).
-   - `authors`: List of display names to track (e.g., `['Ptak, Tommy']`).
+   - `authors`: List of display names to track (e.g., `['Last, First']`).
 
 ---
 

@@ -58,7 +58,7 @@ def main():
             print(f"  - {author}")
         
         print("\nSuggestions:")
-        print("1. Check for typos (e.g., 'Thomas Ptak' vs 'Ptak, Thomas').")
+        print("1. Check for typos (e.g., 'First Last' vs 'Last, First').")
         print("2. Here are some names that WERE found (sample):")
         sample_size = min(10, len(found_authors))
         for name in list(found_authors)[:sample_size]:
