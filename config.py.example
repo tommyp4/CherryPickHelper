@@ -8,3 +8,7 @@ project_name = 'YOUR_PROJECT'
 repository_name = 'YOUR_REPO'
 target_branch = 'YOUR_TARGET_BRANCH'
 local_repo_path = 'C:\\PATH\\TO\\YOUR\\REPO'
+
+# === SEARCH CRITERIA ===
+authors = ['Name One', 'Name Two']
+start_date = 'YYYY-MM-DD HH:MM'
