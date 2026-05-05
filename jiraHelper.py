@@ -20,11 +20,11 @@ def extract_jira_id_from_link(link_formula):
 def main():
     # === JIRA AUTHENTICATION ===
     jira_server = config.jira_base_url.split('/browse/')[0]
-    jira_user = os.getenv('JIRA_EMAIL')
-    jira_token = os.getenv('JIRA_API_TOKEN')
+    jira_user = config.jira_email
+    jira_token = config.jira_api_token
 
-    if not jira_user or not jira_token:
-        print("❌ Error: JIRA_EMAIL or JIRA_API_TOKEN not found in .env file.")
+    if not jira_user or jira_user == 'your_email@company.com':
+        print("❌ Error: jira_email not set correctly in config.py.")
         return
 
     print(f"Connecting to Jira at {jira_server}...")
