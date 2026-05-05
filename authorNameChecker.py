@@ -1,6 +1,7 @@
 import os
 from azure.devops.connection import Connection
 from msrest.authentication import BasicAuthentication
+from azure.devops.v7_1.git.models import GitPullRequestSearchCriteria
 import config
 
 def main():
@@ -23,11 +24,12 @@ def main():
     # === FETCH RECENT PRs ===
     # We fetch a larger batch of PRs to get a good sample of author names
     print("Fetching recent PRs to verify author names...")
+    search_criteria = GitPullRequestSearchCriteria(status='all')
     recent_prs = git_client.get_pull_requests(
         repository_id=repo.id,
-        status='all', # Check all PRs (active, completed, abandoned)
+        search_criteria=search_criteria,
         project=config.project_name,
-        top=100 # Adjust if necessary
+        top=100
     )
 
     # === COLLECT UNIQUE NAMES ===

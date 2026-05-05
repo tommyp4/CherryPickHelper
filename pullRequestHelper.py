@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 from azure.devops.connection import Connection
 from msrest.authentication import BasicAuthentication
+from azure.devops.v7_1.git.models import GitPullRequestSearchCriteria
 import config
 
 def main():
@@ -21,15 +22,16 @@ def main():
 
     # === FETCH PRs ===
     # We'll fetch completed PRs as they are most likely what we want to cherry-pick
-    search_criteria = git_client.get_pull_requests(
+    search_criteria = GitPullRequestSearchCriteria(status='completed')
+    prs = git_client.get_pull_requests(
         repository_id=repo.id,
-        status='completed',
+        search_criteria=search_criteria,
         project=config.project_name
     )
 
     relevant_commits = []
 
-    for pr in search_criteria:
+    for pr in prs:
         # Check if PR was closed/merged after start_dt
         # Note: closed_date is when it was merged/closed
         if pr.closed_date and pr.closed_date.replace(tzinfo=None) < start_dt:
