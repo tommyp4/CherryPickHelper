@@ -1,0 +1,13 @@
+import os
+
+# === CONFIGURATION ===
+organization_url = 'https://dev.azure.com/YOUR_ORG'
+# Load token from environment or fallback
+personal_access_token = os.getenv('AZURE_DEVOPS_PAT', 'YOUR_PAT_HERE')
+project_name = 'YOUR_PROJECT'
+repository_name = 'YOUR_REPO'
+pr_ids = [
+    # 00000,
+]
+target_branch = 'YOUR_TARGET_BRANCH'
+local_repo_path = 'C:\\PATH\\TO\\YOUR\\REPO'
