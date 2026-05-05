@@ -21,11 +21,10 @@ def extract_jira_id(text):
     match = re.search(r'(ALP-\d+)', str(text), re.IGNORECASE)
     return match.group(1).upper() if match else None
 
-def is_author_match(repo_name, target_list):
+def get_matched_config_author(repo_name, target_list):
     """
     Checks if any significant part of a target name exists as a substring 
-    within the repo_name.
-    Example: 'Last, First' matches 'LastFirst'
+    within the repo_name. Returns the matched name from target_list.
     """
     repo_name_clean = repo_name.lower()
 
@@ -36,8 +35,8 @@ def is_author_match(repo_name, target_list):
 
         for p in parts:
             if p in repo_name_clean:
-                return True
-    return False
+                return target
+    return None
 
 def main():
     # === AUTHENTICATION ===
@@ -102,23 +101,27 @@ def main():
         if not history_commits: break
             
         for commit in history_commits:
-            author_name = commit.author.name
-            commit_date = commit.author.date.replace(tzinfo=None)
+            # Use committer date (when it landed in branch) rather than author date
+            commit_date = commit.committer.date.replace(tzinfo=None)
             
+            # Apply our own date filter in Python
             if commit_date < start_dt:
                 if skip > 500:
                     skip = max_scan
                     break
                 continue
 
-            found_authors_in_history.add(author_name)
+            repo_author_name = commit.author.name
+            found_authors_in_history.add(repo_author_name)
+            
+            # --- FUZZY AUTHOR MATCH (And get canonical name) ---
+            matched_config_name = get_matched_config_author(repo_author_name, config.authors)
+            if not matched_config_name:
+                continue
+
             msg = commit.comment.strip()
             subject = get_first_line(msg)
             jira = extract_jira_id(msg)
-
-            # --- FUZZY AUTHOR MATCH ---
-            if not is_author_match(author_name, config.authors):
-                continue
 
             # Check for structural merge
             is_redundant_merge = False
@@ -131,9 +134,9 @@ def main():
                 print(f"Skipping {commit.commit_id[:8]} - Redundant Merged PR record")
                 continue 
                 
-            print(f"Processing: {commit.commit_id[:8]} by {author_name} - {subject[:50]}...")
+            print(f"Processing: {commit.commit_id[:8]} by {matched_config_name} (Repo: {repo_author_name}) - {subject[:50]}...")
             
-            # Look up PR info
+            # Look up PR info for better context
             pr_info = "Direct Push"
             pr_title = ""
             try:
@@ -170,8 +173,7 @@ def main():
 
             all_history_commits.append({
                 'Commit ID': commit.commit_id,
-                'Author': author_name,
-                'Source': pr_info,
+                'Author': matched_config_name, # Use the name from Config
                 'Jira Link': jira_link,
                 'Date': commit_date,
                 'Message': msg,
@@ -183,7 +185,7 @@ def main():
 
     print("-" * 40)
     print(f"Scan complete. Found {len(all_history_commits)} work commits by target authors.")
-    print(f"Unique authors found in this timeframe: {sorted(list(found_authors_in_history))}")
+    print(f"Unique authors found in repo history: {sorted(list(found_authors_in_history))}")
 
     if not all_history_commits:
         return
