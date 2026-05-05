@@ -6,8 +6,14 @@ organization_url = 'https://dev.azure.com/YOUR_ORG'
 personal_access_token = os.getenv('AZURE_DEVOPS_PAT', 'YOUR_PAT_HERE')
 project_name = 'YOUR_PROJECT'
 repository_name = 'YOUR_REPO'
+jira_base_url = 'https://YOUR_ORG.atlassian.net/browse/'
 target_branch = 'YOUR_TARGET_BRANCH'
 local_repo_path = 'C:\\PATH\\TO\\YOUR\\REPO'
+
+# === BRANCH CONFIGURATION ===
+source_branch = 'develop'
+release_branch = 'release/XX.XX.XX'
+cherry_pick_base_branch = 'release/YY.YY.YY'
 
 # === SEARCH CRITERIA ===
 authors = ['Name One', 'Name Two']
