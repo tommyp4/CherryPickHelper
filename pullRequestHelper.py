@@ -45,12 +45,9 @@ def main():
 
     # === 1. SCAN RELEASE HISTORIES (Building Inventories) ===
     # Map (Author, CleanedSubject) -> Count
-    global_inventory = {} 
-    initial_global_inventory = {}
-    
+    release_global_inventory = {} 
     # Map JiraID -> { CleanedSubject -> Count }
-    jira_inventory = {}
-    initial_jira_inventory = {}
+    release_jira_inventory = {}
 
     branches_to_check = [config.check_target_branch, config.cherry_pick_base_branch]
     for branch_name in branches_to_check:
@@ -60,7 +57,7 @@ def main():
             crit = GitQueryCommitsCriteria(item_version=ver, from_date=config.start_date)
             
             b_global = {}
-            b_jira = {} # { jira: {subject: count} }
+            b_jira = {} 
 
             commits = git_client.get_commits(repo.id, search_criteria=crit, project=config.project_name, top=1000)
             if commits:
@@ -80,29 +77,27 @@ def main():
             
             # Merge branch counts into global inventories using MAX
             for k, v in b_global.items():
-                global_inventory[k] = max(global_inventory.get(k, 0), v)
+                release_global_inventory[k] = max(release_global_inventory.get(k, 0), v)
             
             for jid, sub_counts in b_jira.items():
-                if jid not in jira_inventory: jira_inventory[jid] = {}
+                if jid not in release_jira_inventory: release_jira_inventory[jid] = {}
                 for s, v in sub_counts.items():
-                    jira_inventory[jid][s] = max(jira_inventory[jid].get(s, 0), v)
+                    release_jira_inventory[jid][s] = max(release_jira_inventory[jid].get(s, 0), v)
 
         except Exception as e:
             print(f"Warning: Could not scan {branch_name}: {e}")
 
-    initial_global_inventory = global_inventory.copy()
-    # Deep copy jira inventory for mismatch detection
-    initial_jira_inventory = {jid: counts.copy() for jid, counts in jira_inventory.items()}
-    
-    print(f"Release Inventory: {len(global_inventory)} subjects, {len(jira_inventory)} Jira tickets identified.")
+    print(f"Release Inventory: {len(release_global_inventory)} subjects, {len(release_jira_inventory)} Jira tickets identified.")
 
-    # === 2. SCAN DEVELOP (Consuming Inventories) ===
-    print(f"Scanning history of '{config.main_target_branch}'...")
+    # === 2. SCAN DEVELOP (Phase A: Collection & Counting) ===
+    print(f"Collecting commits from history of '{config.main_target_branch}'...")
     dev_ver = GitVersionDescriptor(version=config.main_target_branch, version_type='branch')
     dev_crit = GitQueryCommitsCriteria(item_version=dev_ver)
 
-    all_history_commits = []
-    found_authors_in_history = set()
+    develop_commits = [] # List of (commit_obj, data_dict)
+    dev_global_counts = {} # (Author, CleanedSubject) -> Count
+    dev_jira_counts = {}   # JiraID -> { CleanedSubject -> Count }
+
     skip = 0
     top = 100
     while skip < 2000:
@@ -119,9 +114,9 @@ def main():
             matched_config_name = get_matched_config_author(repo_author_name, config.authors)
             if not matched_config_name: continue
 
-            found_authors_in_history.add(repo_author_name)
             msg = commit.comment.strip()
             subject = get_first_line(msg)
+            cleaned = clean_subject(subject)
             jira = extract_jira_id(msg)
 
             # Redundancy check
@@ -136,73 +131,94 @@ def main():
                         else: merge_note = f"Merge with {len(changes.changes)} unique changes"
                     except: is_redundant_merge = True
             if is_redundant_merge: continue 
-                
-            # --- CHERRY-PICK DETECTION (IF-ELSE ORDER) ---
-            is_in_release = "No"
-            cleaned_dev = clean_subject(subject)
-            g_key = (matched_config_name, cleaned_dev)
             
-            # 1. Exact Global Match (Author + Subject)
-            if global_inventory.get(g_key, 0) > 0:
-                is_in_release = "Yes (Exact Match)"
-                global_inventory[g_key] -= 1
-                # Also consume from Jira inventory if applicable to keep them in sync
-                if jira and jira in jira_inventory and cleaned_dev in jira_inventory[jira]:
-                    jira_inventory[jira][cleaned_dev] = max(0, jira_inventory[jira][cleaned_dev] - 1)
-            
-            # 2. Global Count Mismatch
-            elif initial_global_inventory.get(g_key, 0) > 0:
-                is_in_release = "Needs attention (Subject Count Mismatch)"
-
-            # 3. Jira Ticket Content Match
-            elif jira and jira in jira_inventory:
-                if cleaned_dev in jira_inventory[jira] and jira_inventory[jira][cleaned_dev] > 0:
-                    is_in_release = "Yes (Ticket Match)"
-                    jira_inventory[jira][cleaned_dev] -= 1
-                elif cleaned_dev in initial_jira_inventory.get(jira, {}):
-                    is_in_release = "Needs attention (Ticket Count Mismatch)"
-                else:
-                    # Jira ID exists, but this subject is completely unknown for that ticket
-                    is_in_release = f"Likely (Jira {jira} exists, but subjects differ)"
-            
-            print(f"Processing: {commit.commit_id[:8]} by {matched_config_name} - {subject[:40]}... [{is_in_release}]")
-
-            # Look up PR info
-            pr_info = "Direct Push"
-            pr_title = ""
-            try:
-                assoc = git_client.get_pull_request_query(
-                    queries={'queries': [{'items': [commit.commit_id], 'type': 'commit'}]},
-                    repository_id=repo.id, project=config.project_name
-                ).results.get(commit.commit_id, [])
-                if assoc:
-                    relevant_pr = next((p for p in assoc if p.target_ref_name == f'refs/heads/{config.main_target_branch}'), None)
-                    if relevant_pr:
-                        pr_info = f"PR {relevant_pr.pull_request_id}"
-                        pr_title = relevant_pr.title
-                        if not jira: jira = extract_jira_id(pr_title)
-            except: pass
-
-            jira_link = f'=HYPERLINK("{config.jira_base_url}{jira}","{jira}")' if jira else ""
-            decision = "no" if is_in_release.startswith("Yes") else "yes" if is_in_release == "No" else ""
-
-            all_history_commits.append({
-                'Commit ID': commit.commit_id,
-                'Author': matched_config_name,
-                'Jira Link': jira_link,
-                'Date': commit_date,
-                'Message': msg,
-                'Merge Status': merge_note,
-                'In Release?': is_in_release,
-                'cherry pick?': decision
+            # Record for phase B
+            develop_commits.append({
+                'commit': commit,
+                'author': matched_config_name,
+                'subject': subject,
+                'cleaned': cleaned,
+                'jira': jira,
+                'merge_note': merge_note,
+                'date': commit_date,
+                'full_msg': msg
             })
+
+            # Update counts on develop
+            g_key = (matched_config_name, cleaned)
+            dev_global_counts[g_key] = dev_global_counts.get(g_key, 0) + 1
+            if jira:
+                if jira not in dev_jira_counts: dev_jira_counts[jira] = {}
+                dev_jira_counts[jira][cleaned] = dev_jira_counts[jira].get(cleaned, 0) + 1
+
         skip += top
 
-    if not all_history_commits:
+    # === 3. SCAN DEVELOP (Phase B: Decision Logic) ===
+    print(f"Analyzing {len(develop_commits)} commits for cherry-picking...")
+    all_final_rows = []
+
+    for item in develop_commits:
+        is_in_release = "No"
+        author = item['author']
+        cleaned = item['cleaned']
+        jira = item['jira']
+        g_key = (author, cleaned)
+
+        # RULES IN ORDER (IF-ELSE)
+        
+        # 1. Check Global Exact Match (Author + Subject)
+        if g_key in release_global_inventory:
+            if dev_global_counts[g_key] == release_global_inventory[g_key]:
+                is_in_release = "Yes (Exact Match)"
+            else:
+                is_in_release = "Needs attention (Subject Count Mismatch)"
+        
+        # 2. Check Jira Match (If not already determined)
+        elif jira and jira in release_jira_inventory:
+            if cleaned in release_jira_inventory[jira]:
+                if dev_jira_counts[jira][cleaned] == release_jira_inventory[jira][cleaned]:
+                    is_in_release = "Yes (Ticket Match)"
+                else:
+                    is_in_release = "Needs attention (Ticket Count Mismatch)"
+            else:
+                # Jira ID found but this specific subject is new to the release branch
+                is_in_release = f"Likely (Jira {jira} exists, but subjects differ)"
+        
+        # Look up PR info for better context in report
+        pr_info = "Direct Push"
+        pr_title = ""
+        try:
+            assoc = git_client.get_pull_request_query(
+                queries={'queries': [{'items': [item['commit'].commit_id], 'type': 'commit'}]},
+                repository_id=repo.id, project=config.project_name
+            ).results.get(item['commit'].commit_id, [])
+            if assoc:
+                relevant_pr = next((p for p in assoc if p.target_ref_name == f'refs/heads/{config.main_target_branch}'), None)
+                if relevant_pr:
+                    pr_info = f"PR {relevant_pr.pull_request_id}"
+                    pr_title = relevant_pr.title
+                    if not jira: jira = extract_jira_id(pr_title)
+        except: pass
+
+        jira_link = f'=HYPERLINK("{config.jira_base_url}{jira}","{jira}")' if jira else ""
+        decision = "no" if is_in_release.startswith("Yes") else "yes" if is_in_release == "No" else ""
+
+        all_final_rows.append({
+            'Commit ID': item['commit'].commit_id,
+            'Author': author,
+            'Jira Link': jira_link,
+            'Date': item['date'],
+            'Message': item['full_msg'],
+            'Merge Status': item['merge_note'],
+            'In Release?': is_in_release,
+            'cherry pick?': decision
+        })
+
+    if not all_final_rows:
         print("No matches found."); return
 
-    all_history_commits.sort(key=lambda x: x['Date'])
-    df = pd.DataFrame(all_history_commits)
+    all_final_rows.sort(key=lambda x: x['Date'])
+    df = pd.DataFrame(all_final_rows)
     try:
         df.to_excel('cherrypick_list.xlsx', index=False, engine='openpyxl')
         print(f"Successfully saved to cherrypick_list.xlsx")
