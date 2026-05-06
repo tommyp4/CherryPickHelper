@@ -6,36 +6,39 @@ This document defines the complete end-to-end logic for the Cherry-Pick Helper w
 
 ## 🛠️ Phase 1: Finding & Identifying Work (`pullRequestHelper.py`)
 
+### 1. Data Selection
 1.  **Fuzzy Author Match**: A commit is included if any word from `config.authors` (e.g., "LastName") is found anywhere in the repository author's name (e.g., "LastFirstName"), ignoring case.
 2.  **Date Filter**: Only commits that **landed** (merged) in `develop` after the `start_date` are included.
-3.  **Redundancy Filter**: Standard "Merged PR ####" commits are **skipped** only if they have no unique changes. If a merge contains unique code (like conflict resolutions), it is **kept and flagged** as a "Merge with changes".
-4.  **Baseline Detection**:
-    *   If the **Subject** is physically found in the release branches ➔ **`In Release: Yes (Exact Match)`**.
-    *   If the **Jira ID** is in release and the **Cleaned Subject** matches ➔ **`In Release: Yes (Ticket Match)`**.
-    *   If the **Jira ID** is in release but the work looks new ➔ **`In Release: Likely`**.
-    *   Otherwise ➔ **`In Release: No`**.
-5.  **Baseline Decision**:
-    *   If `Yes` ➔ `cherry pick?` = **`no`**.
-    *   If `No` ➔ `cherry pick?` = **`yes`**.
-    *   If `Likely` ➔ `cherry pick?` = **`(blank)`**.
+3.  **Redundancy Filter**: Standard "Merged PR ####" commits are **skipped** only if they have no unique changes.
+
+### 2. Detection Precedence (If-Else)
+For each commit, the script checks these rules in order. **The first match determines the result.**
+
+1.  **Exact Inventory Match**: If the exact (Author, Subject) pair exists in the release branches ➔ **`In Release: Yes (Exact Match)`** (and 1 count is consumed from inventory).
+2.  **Inventory Depleted**: If the (Author, Subject) was in the inventory but all counts are consumed ➔ **`In Release: Needs attention (Count Mismatch)`**.
+3.  **Jira Ticket Content Match**: If the Jira ID exists in release and the cleaned subject matches ➔ **`In Release: Yes (Ticket Match)`**.
+4.  **Jira ID Match**: If the Jira ID exists in release but the subject is unknown ➔ **`In Release: Likely`**.
+5.  **Default**: If none of the above ➔ **`In Release: No`**.
+
+### 3. Baseline Decision
+- If `Yes` ➔ `cherry pick?` = **`no`**.
+- If `No` ➔ `cherry pick?` = **`yes`**.
+- If `Likely` or `Needs attention` ➔ `cherry pick?` = **`(blank)`**.
 
 ---
 
 ## ⚖️ Phase 2: Jira Validation (`jiraHelper.py`)
 
-Overwrites baseline decisions using official Jira metadata.
+Overwrites baseline decisions using official Jira metadata. **Rules are checked in order.**
 
-| If Jira Fix Version... | New Decision (`cherry pick?`) | Rationale |
-| :--- | :--- | :--- |
-| **Matches `jira_branched_from_version`** | **no** | **No cherry pick.** Already in the old release. |
-| **Matches `jira_target_version`** | **yes** | **Cherry pick.** Explicitly assigned to this target. |
-| **Matches any in `jira_hotfix_versions`** | **yes** | **Cherry pick.** Mandatory hotfix target. |
-| **Is an "Other" version** | **no** | Assigned to a future release. |
-| **Is Missing (Empty)** | *No Change* | Keep the baseline from Phase 1. |
-
-**Safety Overrides:**
-- If Git Status is `Yes`, the decision is always **`no`** (physical presence over Jira data).
-- If Git Status is `Likely`, the decision stays **`blank`** (forces human review).
+### Order of Precedence (If-Else)
+1.  **Physical Safety**: If Git Status is `Yes`, decision is always **`no`** (cannot cherry-pick what is already there).
+2.  **Ambiguity Safety**: If Git Status is `Likely` or `Needs attention`, decision is always **`(blank)`** (requires human review).
+3.  **Old Release**: If Fix Version matches `jira_branched_from_version` ➔ **`no`**.
+4.  **Target Release**: If Fix Version matches `jira_target_version` ➔ **`yes`**.
+5.  **Mandatory Hotfix**: If Fix Version matches any in `jira_hotfix_versions` ➔ **`yes`**.
+6.  **Future Release**: If Fix Version matches any other version ➔ **`no`**.
+7.  **Missing Data**: If no Fix Version found ➔ **No Change** (keep Baseline Decision).
 
 ---
 
