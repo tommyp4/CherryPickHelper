@@ -122,15 +122,24 @@ def main():
             # Redundancy check
             is_redundant_merge = False
             merge_note = ""
-            if subject.startswith("Merged PR"):
-                full = git_client.get_commit(commit.commit_id, repo.id, project=config.project_name)
-                if full.parents and len(full.parents) > 1:
-                    try:
-                        changes = git_client.get_changes(commit.commit_id, repo.id, project=config.project_name)
-                        if not changes.changes: is_redundant_merge = True
-                        else: merge_note = f"Merge with {len(changes.changes)} unique changes"
-                    except: is_redundant_merge = True
-            if is_redundant_merge: continue 
+            
+            # A structural merge has > 1 parent
+            full = git_client.get_commit(commit.commit_id, repo.id, project=config.project_name)
+            is_structural = full.parents and len(full.parents) > 1
+
+            if is_structural:
+                if subject.startswith("Merged PR"):
+                    # System generated PR record - skip
+                    is_redundant_merge = True
+                elif subject.startswith("Merge branch"):
+                    # Manual developer sync - keep and flag
+                    merge_note = "Manual Conflict Sync"
+                else:
+                    # Other structural merges - keep and flag to be safe
+                    merge_note = "Structural Merge"
+
+            if is_redundant_merge:
+                continue 
             
             # Record for phase B
             develop_commits.append({
