@@ -8,7 +8,7 @@ This document defines the complete end-to-end logic for the Cherry-Pick Helper w
 
 1.  **Fuzzy Author Match**: A commit is included if any word from `config.authors` (e.g., "LastName") is found anywhere in the repository author's name (e.g., "LastFirstName"), ignoring case.
 2.  **Date Filter**: Only commits that **landed** (merged) in `develop` after the `start_date` are included.
-3.  **Redundancy Filter**: Standard "Merged PR ####" commits are **skipped** if they have more than one parent.
+3.  **Redundancy Filter**: Standard "Merged PR ####" commits are **skipped** only if they have no unique changes. If a merge contains unique code (like conflict resolutions), it is **kept and flagged** as a "Merge with changes".
 4.  **Baseline Detection**:
     *   If the **Subject** is physically found in the release branches ➔ **`In Release: Yes (Exact Match)`**.
     *   If the **Jira ID** is in release and the **Cleaned Subject** matches ➔ **`In Release: Yes (Ticket Match)`**.

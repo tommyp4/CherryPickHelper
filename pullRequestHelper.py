@@ -130,13 +130,24 @@ def main():
 
             # Check for structural merge
             is_redundant_merge = False
+            merge_note = ""
             if subject.startswith("Merged PR"):
                 full_commit = git_client.get_commit(commit.commit_id, repo.id, project=config.project_name)
                 if full_commit.parents and len(full_commit.parents) > 1:
-                    is_redundant_merge = True
+                    # Content-aware check: Does this merge have unique changes?
+                    try:
+                        changes = git_client.get_changes(commit.commit_id, repo.id, project=config.project_name)
+                        if not changes.changes:
+                            is_redundant_merge = True
+                        else:
+                            # It has changes (likely conflict resolutions)
+                            merge_note = f"Merge with {len(changes.changes)} unique changes"
+                            print(f"Keeping merge {commit.commit_id[:8]} - {merge_note}")
+                    except Exception:
+                        is_redundant_merge = True
 
             if is_redundant_merge:
-                print(f"Skipping {commit.commit_id[:8]} - Redundant Merged PR record")
+                print(f"Skipping {commit.commit_id[:8]} - Clean PR merge (no unique changes)")
                 continue 
                 
             print(f"Processing: {commit.commit_id[:8]} by {matched_config_name} (Repo: {repo_author_name}) - {subject[:50]}...")
@@ -182,6 +193,7 @@ def main():
                 'Jira Link': jira_link,
                 'Date': commit_date,
                 'Message': msg,
+                'Merge Status': merge_note,
                 'In Release?': is_in_release,
                 'cherry pick?': cherry_pick_decision
             })
