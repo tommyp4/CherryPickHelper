@@ -14,11 +14,12 @@ This document defines the complete end-to-end logic for the Cherry-Pick Helper w
 ### 2. Detection Precedence (If-Else)
 For each commit, the script checks these rules in order. **The first match determines the result.**
 
-1.  **Exact Inventory Match**: If the exact (Author, Subject) pair exists in the release branches ➔ **`In Release: Yes (Exact Match)`** (and 1 count is consumed from inventory).
-2.  **Inventory Depleted**: If the (Author, Subject) was in the inventory but all counts are consumed ➔ **`In Release: Needs attention (Count Mismatch)`**.
-3.  **Jira Ticket Content Match**: If the Jira ID exists in release and the cleaned subject matches ➔ **`In Release: Yes (Ticket Match)`**.
-4.  **Jira ID Match**: If the Jira ID exists in release but the subject is unknown ➔ **`In Release: Likely`**.
-5.  **Default**: If none of the above ➔ **`In Release: No`**.
+1.  **Exact Global Match**: If the exact (Author, Subject) pair exists in the release branches ➔ **`In Release: Yes (Exact Match)`** (consumes 1 global count).
+2.  **Global Count Mismatch**: If the (Author, Subject) was in inventory but all global counts are consumed ➔ **`In Release: Needs attention (Subject Count Mismatch)`**.
+3.  **Jira Ticket Content Match**: If the Jira ID exists in release AND that specific subject exists for that ticket ➔ **`In Release: Yes (Ticket Match)`** (consumes 1 Jira-specific count).
+4.  **Jira Ticket Count Mismatch**: If the subject exists for that Jira ticket but all ticket-specific counts are consumed ➔ **`In Release: Needs attention (Ticket Count Mismatch)`**.
+5.  **Jira ID Match**: If the Jira ID exists in release but the subject is unknown for that ticket ➔ **`In Release: Likely`**.
+6.  **Default**: If none of the above ➔ **`In Release: No`**.
 
 ### 3. Baseline Decision
 - If `Yes` ➔ `cherry pick?` = **`no`**.
