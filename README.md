@@ -62,13 +62,16 @@ This script automates the Git operations in your local repository.
 ```powershell
 py cherryPickHelper.py
 ```
+**Interactive Prompts:**
+- **Cherry-pick blanks?**: Choose once at startup if you want to include rows where `cherry pick?` is empty. (Decision is temporary for the run and not saved).
+- **Pause at conflicts?**: Choose if you want the script to pause for manual resolution in VS, or automatically skip conflicted commits (Unattended Mode).
+
 **What it does:**
 1. Aborts any hanging Git operations (failed merges/cherry-picks).
 2. Hard resets your local base branch to match the remote exactly.
 3. Deletes your local `target_branch` and recreates it fresh from the base.
-4. Cherry-picks every `yes` commit from the Excel file one by one.
-5. **Auto-Skips Conflicts**: If a commit conflicts, it aborts that commit and moves to the next.
-6. **Success Tracking**: Updates the `success` column in your Excel file (preserves hyperlinks).
+4. Cherry-picks your selected commits one by one.
+5. **Success Tracking**: Updates the `success` column. If a commit is already present, it marks it as `no changes to commit` and updates the `In Release?` status to `Yes`.
 
 ---
 
