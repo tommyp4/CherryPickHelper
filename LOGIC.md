@@ -10,6 +10,7 @@ This document defines the complete end-to-end logic for the Cherry-Pick Helper w
 1.  **Fuzzy Author Match**: A commit is included if any word from `config.authors` (e.g., "LastName") is found anywhere in the repository author's name (e.g., "LastFirstName"), ignoring case.
 2.  **Date Filter**: Only commits that **landed** (merged) in `develop` after the `start_date` are included.
 3.  **Redundancy Filter**: Standard "Merged PR ####" commits are **skipped** only if they have no unique changes.
+4.  **Overlap Detection**: Commits by **foreign authors** (not in config) are included if they touch any file that was also modified by the team in the same timeframe. These are flagged as "Potential Dependencies."
 
 ### 2. Detection Precedence (If-Else)
 For each commit, the script checks these rules in order. **The first match determines the result.**
