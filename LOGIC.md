@@ -57,3 +57,4 @@ Overwrites baseline decisions using official Jira metadata. **Rules are checked 
 2.  **Strict Selection**: Processes only rows marked **`yes`**.
 3.  **Unattended Mode**: If a conflict occurs, the script **automatically aborts** that commit and moves to the next.
 4.  **Reporting**: Updates the **`success`** column while preserving clickable Jira links.
+5.  **Volatile Decisions**: Decisions made during the startup prompt (for blanks) are **temporary for that run** and are NOT saved back to the Excel file.

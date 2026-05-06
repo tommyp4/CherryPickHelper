@@ -16,33 +16,51 @@ def main():
     excel_file = 'cherrypick_list.xlsx'
     
     if not os.path.exists(excel_file):
-        print(f"{excel_file} not found. Use pullRequestHelper.py to generate it.")
+        print(f"{excel_file} not found. Run pullRequestHelper.py first.")
         return
 
     print(f"Reading commits from {excel_file}...")
-    
-    # We use pandas just to easily identify which rows to process
     df = pd.read_excel(excel_file)
 
     if 'cherry pick?' not in df.columns:
         print(f"Error: Column 'cherry pick?' not found in {excel_file}")
         return
 
-    # Identify commits to cherry-pick
-    mask = df['cherry pick?'].astype(str).str.lower() == 'yes'
-    to_pick_df = df[mask]
+    # === GLOBAL PROMPT FOR BLANKS ===
+    # Check if there are any blanks
+    has_blanks = df['cherry pick?'].isna().any() or (df['cherry pick?'].astype(str).str.lower().str.strip() == '').any()
+    
+    cherry_pick_blanks = False
+    if has_blanks:
+        user_choice = input("\n❓ Found blank entries in 'cherry pick?' column. Cherry-pick ALL blanks? (y/n): ").lower().strip()
+        if user_choice == 'y':
+            print("✅ Will cherry-pick blanks for this run.")
+            cherry_pick_blanks = True
+        else:
+            print("⏭️  Will skip blanks for this run.")
 
-    if to_pick_df.empty:
-        print("No commits marked 'yes' for cherry-picking.")
+    # Identify commits to cherry-pick
+    to_pick_indices = []
+
+    for idx, row in df.iterrows():
+        val = str(row['cherry pick?']).lower().strip()
+        is_blank = pd.isna(row['cherry pick?']) or val == '' or val == 'nan'
+        
+        if val == 'yes':
+            to_pick_indices.append(idx)
+        elif is_blank and cherry_pick_blanks:
+            to_pick_indices.append(idx)
+
+    if not to_pick_indices:
+        print("No commits marked for cherry-picking.")
         return
 
-    print(f"Found {len(to_pick_df)} commits marked for cherry-picking.")
+    print(f"Found {len(to_pick_indices)} commits to process.")
 
-    # === GET REPO INFO ===
+    # === PREPARE REPOSITORY ===
     repo_info = git_client.get_repository(project=config.project_name, repository_id=config.repository_name)
     remote_url = f'https://user:{config.personal_access_token}@dev.azure.com/alpineitw/VIEW/_git/VIEW'
 
-    # === PREPARE REPOSITORY ===
     if not os.path.exists(config.local_repo_path):
         print(f"Cloning repository to {config.local_repo_path}...")
         repo = Repo.clone_from(remote_url, config.local_repo_path)
@@ -89,17 +107,16 @@ def main():
     git.checkout('-b', target_branch, base_branch)
 
     # === CHERRY-PICK LOOP ===
-    # We will store the results in a dictionary to write back via openpyxl
     results = {} # { commit_id: 'yes'/'no' }
-    
     success_count = 0
     fail_count = 0
 
-    for i, (idx, row) in enumerate(to_pick_df.iterrows()):
+    for i, idx in enumerate(to_pick_indices):
+        row = df.loc[idx]
         commit_id = row['Commit ID']
         msg = row['Message']
         
-        print(f"\n[{i + 1}/{len(to_pick_df)}] Cherry-picking {commit_id[:8]} - {str(msg)[:50]}...")
+        print(f"\n[{i + 1}/{len(to_pick_indices)}] Cherry-picking {commit_id[:8]} - {str(msg)[:50]}...")
         
         try:
             git.cherry_pick(commit_id)
@@ -116,17 +133,14 @@ def main():
 
     # === SAVE RESULTS (PRESERVING FORMULAS) ===
     print(f"\nProcess completed. Success: {success_count}, Failed: {fail_count}")
-    print(f"Updating {excel_file} with success status while preserving hyperlinks...")
+    print(f"Updating {excel_file} while preserving hyperlinks...")
     
     try:
         wb = load_workbook(excel_file)
         ws = wb.active
-
-        # 1. Find the 'success' and 'Commit ID' column indices
         col_map = {cell.value: cell.column for cell in ws[1]}
         
         if 'success' not in col_map:
-            # Add success column if missing
             new_col = ws.max_column + 1
             ws.cell(row=1, column=new_col).value = 'success'
             col_map['success'] = new_col
@@ -134,8 +148,6 @@ def main():
         success_col = col_map['success']
         id_col = col_map['Commit ID']
 
-        # 2. Iterate through rows and update success column based on Commit ID
-        # Row 2 is the first data row
         for row_idx in range(2, ws.max_row + 1):
             commit_id = ws.cell(row=row_idx, column=id_col).value
             if commit_id in results:
