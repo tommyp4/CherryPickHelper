@@ -32,6 +32,14 @@ For each commit, the script checks these rules in order. **The first match deter
 
 Overwrites baseline decisions using official Jira metadata. **Rules are checked in order.**
 
+| If Jira Fix Version... | New Decision (`cherry pick?`) | Rationale |
+| :--- | :--- | :--- |
+| **Matches `jira_branched_from_version`** | **no** | **No cherry pick.** Already in the old release. |
+| **Matches `jira_target_version`** | **yes** | **Cherry pick.** Explicitly assigned to this target. |
+| **Matches any in `jira_hotfix_versions`** | **yes** | **Cherry pick.** Mandatory hotfix target. |
+| **Is an "Other" version** | **no** | Assigned to a future release. |
+| **Is Missing (Empty)** | **no** | **No cherry pick.** Requires explicit Fix Version in Jira. |
+
 ### Order of Precedence (If-Else)
 1.  **Physical Safety**: If Git Status is `Yes`, decision is always **`no`** (cannot cherry-pick what is already there).
 2.  **Ambiguity Safety**: If Git Status is `Likely` or `Needs attention`, decision is always **`(blank)`** (requires human review).
@@ -39,7 +47,7 @@ Overwrites baseline decisions using official Jira metadata. **Rules are checked 
 4.  **Target Release**: If Fix Version matches `jira_target_version` ➔ **`yes`**.
 5.  **Mandatory Hotfix**: If Fix Version matches any in `jira_hotfix_versions` ➔ **`yes`**.
 6.  **Future Release**: If Fix Version matches any other version ➔ **`no`**.
-7.  **Missing Data**: If no Fix Version found ➔ **No Change** (keep Baseline Decision).
+7.  **Missing Data**: If no Fix Version found ➔ **`no`** (overrides Baseline Decision).
 
 ---
 

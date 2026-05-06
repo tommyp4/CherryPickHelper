@@ -83,6 +83,23 @@ def main():
             if jira_id:
                 if jira_id in cache:
                     version_str = cache[jira_id]
+                    # Update decision column if cached
+                    if is_physically_present:
+                        ws.cell(row=row_idx, column=decision_col).value = 'no'
+                    elif is_likely or current_status.startswith("Needs attention"):
+                        ws.cell(row=row_idx, column=decision_col).value = ''
+                    elif version_str == "No Fix Version":
+                        ws.cell(row=row_idx, column=decision_col).value = 'no'
+                    else:
+                        versions = [v.strip() for v in version_str.split(',')]
+                        if any(v == config.jira_branched_from_version for v in versions):
+                            ws.cell(row=row_idx, column=decision_col).value = 'no'
+                        elif any(v == config.jira_target_version for v in versions):
+                            ws.cell(row=row_idx, column=decision_col).value = 'yes'
+                        elif any(v in hotfix_set for v in versions):
+                            ws.cell(row=row_idx, column=decision_col).value = 'yes'
+                        else:
+                            ws.cell(row=row_idx, column=decision_col).value = 'no'
                 else:
                     try:
                         print(f"  [{row_idx-1}/{total_rows}] Fetching {jira_id}...", end="\r")
@@ -94,22 +111,24 @@ def main():
                             
                             # DECISION LOGIC
                             if is_physically_present:
-                                # Always 'no' if already in branch physically
                                 ws.cell(row=row_idx, column=decision_col).value = 'no'
                             elif is_likely or current_status.startswith("Needs attention"):
-                                # Keep blank for human review
                                 ws.cell(row=row_idx, column=decision_col).value = ''
                             elif any(v == config.jira_branched_from_version for v in versions):
-                                # Already in the old release
                                 ws.cell(row=row_idx, column=decision_col).value = 'no'
                             elif any(v == config.jira_target_version for v in versions):
-                                # Targeted for current release
                                 ws.cell(row=row_idx, column=decision_col).value = 'yes'
                             elif any(v in hotfix_set for v in versions):
-                                # Mandatory hotfix
                                 ws.cell(row=row_idx, column=decision_col).value = 'yes'
                             else:
-                                # Assigned to some future version
+                                ws.cell(row=row_idx, column=decision_col).value = 'no'
+                        else:
+                            # NO FIX VERSION ➔ NO CHERRY PICK
+                            if is_physically_present:
+                                ws.cell(row=row_idx, column=decision_col).value = 'no'
+                            elif is_likely or current_status.startswith("Needs attention"):
+                                ws.cell(row=row_idx, column=decision_col).value = ''
+                            else:
                                 ws.cell(row=row_idx, column=decision_col).value = 'no'
                         
                         cache[jira_id] = version_str
