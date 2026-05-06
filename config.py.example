@@ -17,6 +17,11 @@ source_branch = 'develop'
 release_branch = 'release/XX.XX.XX'
 cherry_pick_base_branch = 'release/YY.YY.YY'
 
+# 4. Target Fix Versions for automation
+jira_branched_from_version = 'XX.XX.00'
+jira_target_version = 'XX.XX.01'
+jira_hotfix_versions = ['XX.XX.01', 'XX.XX.02']
+
 # === SEARCH CRITERIA ===
 authors = ['Name One', 'Name Two']
 start_date = 'YYYY-MM-DD HH:MM'

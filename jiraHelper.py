@@ -44,8 +44,9 @@ def main():
 
         # 1. Find relevant columns
         col_map = {cell.value: cell.column for cell in ws[1]}
-        if 'Jira Link' not in col_map:
-            print("❌ Error: 'Jira Link' column not found.")
+        required = ['Jira Link', 'In Release?', 'cherry pick?']
+        if not all(col in col_map for col in required):
+            print(f"❌ Error: Required columns {required} not found.")
             return
 
         # Ensure 'Jira Fix Version' column exists
@@ -57,37 +58,70 @@ def main():
             fix_version_col = col_map['Jira Fix Version']
 
         jira_col = col_map['Jira Link']
+        status_col = col_map['In Release?']
+        decision_col = col_map['cherry pick?']
         
-        # 2. Cache lookups to avoid redundant API calls for same ID
-        cache = {}
+        # 2. Cache lookups
+        cache = {} 
 
         # 3. Iterate rows (starting at row 2)
         total_rows = ws.max_row - 1
         print(f"Checking {total_rows} rows...")
 
+        hotfix_set = set(config.jira_hotfix_versions)
+
         for row_idx in range(2, ws.max_row + 1):
             cell_value = ws.cell(row=row_idx, column=jira_col).value
             jira_id = extract_jira_id_from_link(cell_value)
+            
+            # Physical state check
+            current_status = str(ws.cell(row=row_idx, column=status_col).value)
+            is_physically_present = current_status.startswith("Yes")
+            is_likely = current_status.startswith("Likely")
 
+            version_str = "No Fix Version"
             if jira_id:
                 if jira_id in cache:
-                    ws.cell(row=row_idx, column=fix_version_col).value = cache[jira_id]
+                    version_str = cache[jira_id]
                 else:
                     try:
                         print(f"  [{row_idx-1}/{total_rows}] Fetching {jira_id}...", end="\r")
                         issue = jira.issue(jira_id, fields='fixVersions')
-                        versions = [v.name for p in [issue.fields.fixVersions] for v in p]
-                        version_str = ", ".join(versions) if versions else "No Fix Version"
+                        versions = [v.name for v in issue.fields.fixVersions]
+                        
+                        if versions:
+                            version_str = ", ".join(versions)
+                            
+                            # DECISION LOGIC
+                            if is_physically_present:
+                                # Always 'no' if already in branch physically
+                                ws.cell(row=row_idx, column=decision_col).value = 'no'
+                            elif is_likely:
+                                # Keep blank for human review
+                                ws.cell(row=row_idx, column=decision_col).value = ''
+                            elif any(v == config.jira_branched_from_version for v in versions):
+                                # Already in the old release
+                                ws.cell(row=row_idx, column=decision_col).value = 'no'
+                            elif any(v == config.jira_target_version for v in versions):
+                                # Targeted for current release
+                                ws.cell(row=row_idx, column=decision_col).value = 'yes'
+                            elif any(v in hotfix_set for v in versions):
+                                # Mandatory hotfix
+                                ws.cell(row=row_idx, column=decision_col).value = 'yes'
+                            else:
+                                # Assigned to some future version
+                                ws.cell(row=row_idx, column=decision_col).value = 'no'
                         
                         cache[jira_id] = version_str
-                        ws.cell(row=row_idx, column=fix_version_col).value = version_str
-                    except Exception as e:
-                        ws.cell(row=row_idx, column=fix_version_col).value = "Error/Not Found"
+                    except Exception:
+                        version_str = "Error/Not Found"
+                
+                ws.cell(row=row_idx, column=fix_version_col).value = version_str
             else:
                 ws.cell(row=row_idx, column=fix_version_col).value = "N/A"
 
         wb.save(excel_file)
-        print(f"\n✅ Successfully updated {excel_file} with Jira Fix Versions.")
+        print(f"\n✅ Successfully updated {excel_file} with Jira Fix Versions and final decisions.")
 
     except Exception as e:
         print(f"\n❌ Error processing Excel: {e}")
