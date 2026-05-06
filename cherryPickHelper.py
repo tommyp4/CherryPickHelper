@@ -107,9 +107,10 @@ def main():
     git.checkout('-b', target_branch, base_branch)
 
     # === CHERRY-PICK LOOP ===
-    results = {} # { commit_id: 'yes'/'no' }
+    results = {} # { commit_id: status_string }
     success_count = 0
     fail_count = 0
+    empty_count = 0
 
     for i, idx in enumerate(to_pick_indices):
         row = df.loc[idx]
@@ -123,16 +124,24 @@ def main():
             print("✅ Success")
             results[commit_id] = 'yes'
             success_count += 1
-        except GitCommandError:
-            print(f"❌ Conflict or error. Aborting this commit.")
-            results[commit_id] = 'no'
-            fail_count += 1
+        except GitCommandError as e:
+            error_output = str(e).lower()
+            if "empty" in error_output or "nothing to commit" in error_output:
+                print("ℹ️  No changes to commit (already present).")
+                results[commit_id] = 'no changes to commit'
+                empty_count += 1
+            else:
+                print(f"❌ Conflict or error. Aborting this commit.")
+                results[commit_id] = 'no'
+                fail_count += 1
+            
+            # Abort the failed cherry-pick so we can move to the next one
             try:
                 git.execute(['git', 'cherry-pick', '--abort'])
             except GitCommandError: pass
 
     # === SAVE RESULTS (PRESERVING FORMULAS) ===
-    print(f"\nProcess completed. Success: {success_count}, Failed: {fail_count}")
+    print(f"\nProcess completed. Success: {success_count}, Failed: {fail_count}, Already Present: {empty_count}")
     print(f"Updating {excel_file} while preserving hyperlinks...")
     
     try:
@@ -147,11 +156,17 @@ def main():
             
         success_col = col_map['success']
         id_col = col_map['Commit ID']
+        in_release_col = col_map.get('In Release?')
 
         for row_idx in range(2, ws.max_row + 1):
             commit_id = ws.cell(row=row_idx, column=id_col).value
             if commit_id in results:
-                ws.cell(row=row_idx, column=success_col).value = results[commit_id]
+                status = results[commit_id]
+                ws.cell(row=row_idx, column=success_col).value = status
+                
+                # If no changes were needed, mark as physically in release
+                if status == 'no changes to commit' and in_release_col:
+                    ws.cell(row=row_idx, column=in_release_col).value = 'Yes'
 
         wb.save(excel_file)
         print(f"Successfully updated {excel_file}.")
