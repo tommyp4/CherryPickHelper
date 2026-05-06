@@ -96,7 +96,7 @@ def main():
                             if is_physically_present:
                                 # Always 'no' if already in branch physically
                                 ws.cell(row=row_idx, column=decision_col).value = 'no'
-                            elif is_likely:
+                            elif is_likely or current_status.startswith("Needs attention"):
                                 # Keep blank for human review
                                 ws.cell(row=row_idx, column=decision_col).value = ''
                             elif any(v == config.jira_branched_from_version for v in versions):
