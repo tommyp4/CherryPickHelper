@@ -26,29 +26,31 @@ def main():
         print(f"Error: Column 'cherry pick?' not found in {excel_file}")
         return
 
-    # === GLOBAL PROMPT FOR BLANKS ===
-    # Check if there are any blanks
+    # === GLOBAL PROMPTS ===
+    # 1. Blanks handling
     has_blanks = df['cherry pick?'].isna().any() or (df['cherry pick?'].astype(str).str.lower().str.strip() == '').any()
-    
     cherry_pick_blanks = False
     if has_blanks:
-        user_choice = input("\n❓ Found blank entries in 'cherry pick?' column. Cherry-pick ALL blanks? (y/n): ").lower().strip()
-        if user_choice == 'y':
-            print("✅ Will cherry-pick blanks for this run.")
+        if input("\n❓ Found blank entries in 'cherry pick?' column. Cherry-pick ALL blanks? (y/n): ").lower().strip() == 'y':
+            print("✅ Will cherry-pick blanks.")
             cherry_pick_blanks = True
         else:
-            print("⏭️  Will skip blanks for this run.")
+            print("⏭️  Will skip blanks.")
+
+    # 2. Conflict handling
+    pause_at_conflicts = False
+    if input("\n❓ Pause at conflicts for manual resolution? (y/n): ").lower().strip() == 'y':
+        print("⏸️  Will pause at conflicts.")
+        pause_at_conflicts = True
+    else:
+        print("🤖 Will automatically skip conflicts (Unattended Mode).")
 
     # Identify commits to cherry-pick
     to_pick_indices = []
-
     for idx, row in df.iterrows():
         val = str(row['cherry pick?']).lower().strip()
         is_blank = pd.isna(row['cherry pick?']) or val == '' or val == 'nan'
-        
-        if val == 'yes':
-            to_pick_indices.append(idx)
-        elif is_blank and cherry_pick_blanks:
+        if val == 'yes' or (is_blank and cherry_pick_blanks):
             to_pick_indices.append(idx)
 
     if not to_pick_indices:
@@ -72,11 +74,9 @@ def main():
 
     # === ROBUST CLEANUP ===
     print("Performing pre-flight cleanup...")
-    try:
-        git.execute(['git', 'cherry-pick', '--abort'])
+    try: git.execute(['git', 'cherry-pick', '--abort'])
     except GitCommandError: pass
-    try:
-        git.execute(['git', 'merge', '--abort'])
+    try: git.execute(['git', 'merge', '--abort'])
     except GitCommandError: pass
     
     print("Clearing local changes and index errors...")
@@ -95,13 +95,9 @@ def main():
 
     print(f"Ensuring local branch '{target_branch}' is clean...")
     try:
-        if repo.active_branch.name == target_branch:
-            git.checkout(base_branch)
-        if target_branch in repo.heads:
-            print(f"Deleting existing local branch '{target_branch}'...")
-            git.branch('-D', target_branch)
-    except Exception as e:
-        print(f"Note: Could not delete local branch: {e}")
+        if repo.active_branch.name == target_branch: git.checkout(base_branch)
+        if target_branch in repo.heads: git.branch('-D', target_branch)
+    except: pass
 
     print(f"Creating new branch '{target_branch}' from '{base_branch}'...")
     git.checkout('-b', target_branch, base_branch)
@@ -130,17 +126,40 @@ def main():
                 print("ℹ️  No changes to commit (already present).")
                 results[commit_id] = 'no changes to commit'
                 empty_count += 1
+                try: git.execute(['git', 'cherry-pick', '--abort'])
+                except GitCommandError: pass
             else:
-                print(f"❌ Conflict or error. Aborting this commit.")
-                results[commit_id] = 'no'
-                fail_count += 1
-            
-            # Abort the failed cherry-pick so we can move to the next one
-            try:
-                git.execute(['git', 'cherry-pick', '--abort'])
-            except GitCommandError: pass
+                if pause_at_conflicts:
+                    print(f"\n❌ Conflict in {commit_id[:8]}.")
+                    print("🛠️  Resolve in VS/Git and Stage changes.")
+                    choice = input("👉 Enter 'r' to continue, or 's' to skip/abort this commit: ").lower().strip()
+                    if choice == 'r':
+                        try:
+                            # We assume the user has resolved and staged
+                            git.execute(['git', 'cherry-pick', '--continue'], env={'GIT_EDITOR': 'true'})
+                            print("✅ Success (Resolved Manually)")
+                            results[commit_id] = 'yes'
+                            success_count += 1
+                        except GitCommandError as continue_err:
+                            print(f"❌ Resolution failed. Skipping.")
+                            results[commit_id] = 'no'
+                            fail_count += 1
+                            try: git.execute(['git', 'cherry-pick', '--abort'])
+                            except GitCommandError: pass
+                    else:
+                        print("⏭️  Skipping commit.")
+                        results[commit_id] = 'no'
+                        fail_count += 1
+                        try: git.execute(['git', 'cherry-pick', '--abort'])
+                        except GitCommandError: pass
+                else:
+                    print(f"❌ Conflict. Aborting this commit.")
+                    results[commit_id] = 'no'
+                    fail_count += 1
+                    try: git.execute(['git', 'cherry-pick', '--abort'])
+                    except GitCommandError: pass
 
-    # === SAVE RESULTS (PRESERVING FORMULAS) ===
+    # === SAVE RESULTS ===
     print(f"\nProcess completed. Success: {success_count}, Failed: {fail_count}, Already Present: {empty_count}")
     print(f"Updating {excel_file} while preserving hyperlinks...")
     
@@ -148,7 +167,6 @@ def main():
         wb = load_workbook(excel_file)
         ws = wb.active
         col_map = {cell.value: cell.column for cell in ws[1]}
-        
         if 'success' not in col_map:
             new_col = ws.max_column + 1
             ws.cell(row=1, column=new_col).value = 'success'
@@ -157,6 +175,7 @@ def main():
         success_col = col_map['success']
         id_col = col_map['Commit ID']
         in_release_col = col_map.get('In Release?')
+        decision_col = col_map.get('cherry pick?')
 
         for row_idx in range(2, ws.max_row + 1):
             commit_id = ws.cell(row=row_idx, column=id_col).value
@@ -164,14 +183,13 @@ def main():
                 status = results[commit_id]
                 ws.cell(row=row_idx, column=success_col).value = status
                 
-                # If no changes were needed, mark as physically in release
-                if status == 'no changes to commit' and in_release_col:
-                    ws.cell(row=row_idx, column=in_release_col).value = 'Yes'
+                # If no changes were needed, mark as physically in release and stop future picking
+                if status == 'no changes to commit':
+                    if in_release_col: ws.cell(row=row_idx, column=in_release_col).value = 'Yes'
+                    if decision_col: ws.cell(row=row_idx, column=decision_col).value = 'no'
 
         wb.save(excel_file)
         print(f"Successfully updated {excel_file}.")
-    except PermissionError:
-        print(f"❌ Error: Could not save to {excel_file}. Please close the file.")
     except Exception as e:
         print(f"❌ Error updating Excel: {e}")
 
