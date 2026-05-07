@@ -73,6 +73,16 @@ py cherryPickHelper.py
 4. Cherry-picks your selected commits one by one.
 5. **Success Tracking**: Updates the `success` column. If a commit is already present, it marks it as `no changes to commit` and updates the `In Release?` status to `Yes`.
 
+### Step 5: Final Sync Verification (Optional)
+This tool provides the "Final Proof" by comparing actual code patches between branches.
+```powershell
+py verifyBranchSync.py
+```
+**What it does:**
+- Runs `git cherry` to compare the `develop` branch against the `release` branch at the patch level.
+- Filters by your team's author list.
+- Reports exactly which commits are physically missing from the release branch (even if Jira or subject matching was ambiguous).
+
 ---
 
 ## 📄 File Overview
