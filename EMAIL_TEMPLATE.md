@@ -1,10 +1,10 @@
-Subject: Release Prep: Helping verify our commits for [Release Version]
+Subject: Release Cherry Picks: Helping verify our commits for [Release Version]
 
 Hi Team,
 
-I’ve just finished running our automated release audit and a first-pass cherry-pick to help us get ready for the upcoming release. To make sure everything is exactly where it needs to be, I'd really appreciate your help in double-checking the manifest.
+I’ve just finished running our automated release audit and a first-pass cherry-pick to help us get ready for the upcoming release. To make sure everything is exactly where it needs to be, I need your help in double-checking the manifest.
 
-Please find the attached cherrypick_list.xlsx. I’d like everyone to filter the "Author" column by your name and review every row assigned to you by [Insert Time/Date].
+Please find the attached cherrypick_list.xlsx. I’d like everyone to filter the "Author" column by your name and review every row assigned to you by EOD.
 
 📋 Columns to Review
 
