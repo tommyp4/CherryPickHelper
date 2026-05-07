@@ -74,8 +74,15 @@ def main():
 
     # === ROBUST CLEANUP ===
     print("Performing pre-flight cleanup...")
-    try: git.execute(['git', 'cherry-pick', '--abort'])
+    try:
+        # Prune stale remote tracking branches (fixes "cannot lock ref" errors)
+        git.execute(['git', 'remote', 'prune', 'origin'])
     except GitCommandError: pass
+
+    try:
+        git.execute(['git', 'cherry-pick', '--abort'])
+    except GitCommandError: pass
+
     try: git.execute(['git', 'merge', '--abort'])
     except GitCommandError: pass
     
