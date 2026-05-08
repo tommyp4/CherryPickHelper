@@ -1,21 +1,16 @@
 import os
 from git import Repo
 import config
-
-def get_matched_config_author(repo_name, target_list):
-    """Checks if any significant part of a target name exists as a substring."""
-    repo_name_clean = repo_name.lower()
-    for target in target_list:
-        target_clean = target.lower().replace(',', ' ')
-        parts = [p for p in target_clean.split() if len(p) > 2]
-        for p in parts:
-            if p in repo_name_clean:
-                return target
-    return None
+from openpyxl import load_workbook
 
 def main():
     if not os.path.exists(config.local_repo_path):
         print(f"❌ Error: Repository path {config.local_repo_path} not found.")
+        return
+
+    excel_file = 'cherrypick_list.xlsx'
+    if not os.path.exists(excel_file):
+        print(f"❌ Error: {excel_file} not found. Run pullRequestHelper.py first.")
         return
 
     repo = Repo(config.local_repo_path)
@@ -27,6 +22,9 @@ def main():
     print("-" * 40)
 
     print("Fetching latest changes from remote...")
+    try:
+        git.execute(['git', 'remote', 'prune', 'origin'])
+    except: pass
     repo.remotes.origin.fetch()
 
     # Use origin versions to be 100% sure we are comparing against the server state
@@ -43,42 +41,69 @@ def main():
         print(f"❌ Error running git cherry: {e}")
         return
 
+    # Map commit IDs to their sync status according to git cherry
+    # status_map[full_hash] = 'Yes' (if -) or 'No' (if +)
+    status_map = {}
     lines = cherry_output.splitlines()
-    missing_count = 0
-    total_scanned = len(lines)
-
-    print(f"Scanned {total_scanned} commits in {config.main_target_branch} history.")
-    print("-" * 40)
-    print(f"COMMITS MISSING FROM {config.cherry_pick_base_branch}:")
-
     for line in lines:
-        if not line.startswith("+"):
-            continue
-        
-        parts = line.split(maxsplit=2)
-        if len(parts) < 2: continue
-        
-        commit_id = parts[1]
-        
-        # Fetch commit object to check author
-        commit = repo.commit(commit_id)
-        author_name = commit.author.name
-        
-        matched_author = get_matched_config_author(author_name, config.authors)
-        
-        if matched_author:
-            missing_count += 1
-            subject = commit.message.splitlines()[0]
-            print(f"[{missing_count}] {commit_id[:8]} | {matched_author}")
-            print(f"    Date: {commit.committer_datetime}")
-            print(f"    Msg:  {subject[:80]}...")
-            print("-" * 20)
+        parts = line.split()
+        if len(parts) >= 2:
+            status = 'Yes' if parts[0] == '-' else 'No'
+            commit_id = parts[1]
+            status_map[commit_id] = status
 
-    if missing_count == 0:
-        print("\n✅ Success! All team commits from develop are physically present in the release branch.")
-    else:
-        print(f"\n⚠️  Found {missing_count} commits by your team that are physically missing from the release branch.")
-        print("Note: If a commit was cherry-picked but modified manually, it might show up here even if the logic is present.")
+    print(f"Scanned {len(status_map)} commits in history.")
+    print(f"Updating {excel_file} with patch verification...")
+
+    try:
+        wb = load_workbook(excel_file)
+        ws = wb.active
+
+        # 1. Find columns
+        col_map = {cell.value: cell.column for cell in ws[1]}
+        if 'Commit ID' not in col_map:
+            print("❌ Error: 'Commit ID' column not found in Excel.")
+            return
+
+        # Ensure 'Patch physically in Release?' column exists
+        col_name = 'Patch physically in Release?'
+        if col_name not in col_map:
+            new_col = ws.max_column + 1
+            ws.cell(row=1, column=new_col).value = col_name
+            target_col = new_col
+        else:
+            target_col = col_map[col_name]
+
+        id_col = col_map['Commit ID']
+
+        # 2. Iterate rows and match by Commit ID
+        update_count = 0
+        for row_idx in range(2, ws.max_row + 1):
+            commit_id = ws.cell(row=row_idx, column=id_col).value
+            
+            # Check for match (handling potential short vs full hashes)
+            # git cherry usually gives full hashes
+            found_status = None
+            if commit_id in status_map:
+                found_status = status_map[commit_id]
+            else:
+                # Fallback: check if any key in status_map starts with our commit_id
+                for full_hash, status in status_map.items():
+                    if full_hash.startswith(str(commit_id)) or str(commit_id).startswith(full_hash):
+                        found_status = status
+                        break
+            
+            if found_status:
+                ws.cell(row=row_idx, column=target_col).value = found_status
+                update_count += 1
+
+        wb.save(excel_file)
+        print(f"✅ Successfully updated {update_count} rows in {excel_file}.")
+
+    except PermissionError:
+        print(f"❌ Error: Could not save to {excel_file}. Please close the file.")
+    except Exception as e:
+        print(f"❌ Error updating Excel: {e}")
 
 if __name__ == "__main__":
     main()
