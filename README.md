@@ -32,6 +32,16 @@ An automated toolset to identify missing code changes from `develop` and batch c
 
 ## 🚀 Workflow
 
+### All-in-One Command (Recommended)
+You can run the entire workflow in one go using:
+```powershell
+py runFullPipeline.py
+```
+This script will interactively guide you through all steps listed below.
+
+### Individual Steps
+If you need to run specific parts of the process manually:
+
 ### Step 1: Verify Names (Optional)
 Run this if you aren't sure if your author names match the Azure DevOps display names.
 ```powershell
