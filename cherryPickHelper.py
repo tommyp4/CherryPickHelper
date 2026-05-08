@@ -1,4 +1,4 @@
-import os, base64
+import os, base64, sys, argparse
 import pandas as pd
 from git import Repo, GitCommandError
 from azure.devops.connection import Connection
@@ -7,6 +7,12 @@ import config
 from openpyxl import load_workbook
 
 def main():
+    # === ARGUMENT PARSING ===
+    parser = argparse.ArgumentParser(description="Automated Cherry-Pick Helper")
+    parser.add_argument("--blanks", choices=['y', 'n'], help="Cherry-pick ALL blanks? (y/n)")
+    parser.add_argument("--pause", choices=['y', 'n'], help="Pause at conflicts? (y/n)")
+    args = parser.parse_args()
+
     # === AUTHENTICATION ===
     credentials = BasicAuthentication('', config.personal_access_token)
     connection = Connection(base_url=config.organization_url, creds=credentials)
@@ -26,22 +32,32 @@ def main():
         print(f"Error: Column 'cherry pick?' not found in {excel_file}")
         return
 
-    # === GLOBAL PROMPTS ===
+    # === GLOBAL PROMPTS / ARGUMENTS ===
     # 1. Blanks handling
     has_blanks = df['cherry pick?'].isna().any() or (df['cherry pick?'].astype(str).str.lower().str.strip() == '').any()
     cherry_pick_blanks = False
+    
     if has_blanks:
-        if input("\n❓ Found blank entries in 'cherry pick?' column. Cherry-pick ALL blanks? (y/n): ").lower().strip() == 'y':
+        if args.blanks:
+            user_choice = args.blanks
+        else:
+            user_choice = input("\n❓ Found blank entries in 'cherry pick?' column. Cherry-pick ALL blanks? (y/n): ").lower().strip()
+        
+        if user_choice == 'y':
             print("✅ Will cherry-pick blanks.")
             cherry_pick_blanks = True
         else:
             print("⏭️  Will skip blanks.")
 
     # 2. Conflict handling
-    pause_at_conflicts = False
-    if input("\n❓ Pause at conflicts for manual resolution? (y/n): ").lower().strip() == 'y':
+    if args.pause:
+        pause_choice = args.pause
+    else:
+        pause_choice = input("\n❓ Pause at conflicts for manual resolution? (y/n): ").lower().strip()
+    
+    pause_at_conflicts = (pause_choice == 'y')
+    if pause_at_conflicts:
         print("⏸️  Will pause at conflicts.")
-        pause_at_conflicts = True
     else:
         print("🤖 Will automatically skip conflicts (Unattended Mode).")
 
@@ -75,15 +91,13 @@ def main():
     # === ROBUST CLEANUP ===
     print("Performing pre-flight cleanup...")
     try:
-        # Prune stale remote tracking branches (fixes "cannot lock ref" errors)
         git.execute(['git', 'remote', 'prune', 'origin'])
     except GitCommandError: pass
-
     try:
         git.execute(['git', 'cherry-pick', '--abort'])
     except GitCommandError: pass
-
-    try: git.execute(['git', 'merge', '--abort'])
+    try:
+        git.execute(['git', 'merge', '--abort'])
     except GitCommandError: pass
     
     print("Clearing local changes and index errors...")
@@ -142,12 +156,11 @@ def main():
                     choice = input("👉 Enter 'r' to continue, or 's' to skip/abort this commit: ").lower().strip()
                     if choice == 'r':
                         try:
-                            # We assume the user has resolved and staged
                             git.execute(['git', 'cherry-pick', '--continue'], env={'GIT_EDITOR': 'true'})
                             print("✅ Success (Resolved Manually)")
                             results[commit_id] = 'yes'
                             success_count += 1
-                        except GitCommandError as continue_err:
+                        except GitCommandError:
                             print(f"❌ Resolution failed. Skipping.")
                             results[commit_id] = 'no'
                             fail_count += 1
@@ -189,8 +202,6 @@ def main():
             if commit_id in results:
                 status = results[commit_id]
                 ws.cell(row=row_idx, column=success_col).value = status
-                
-                # If no changes were needed, mark as physically in release and stop future picking
                 if status == 'no changes to commit':
                     if in_release_col: ws.cell(row=row_idx, column=in_release_col).value = 'Yes'
                     if decision_col: ws.cell(row=row_idx, column=decision_col).value = 'no'
