@@ -16,6 +16,10 @@ def main():
     print("   CHERRY-PICK HELPER FULL PIPELINE")
     print("========================================\n")
 
+    # Step 1: Optional Author Name Checker
+    if input("❓ Run Author Name Checker before proceeding? (y/n): ").lower().strip() == 'y':
+        if not run_command("py authorNameChecker.py"): return
+
     # Step 2: Gather Data
     if not run_command("py pullRequestHelper.py"): return
 
