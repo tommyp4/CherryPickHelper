@@ -11,8 +11,15 @@ def get_first_line(msg):
     return msg.split('\n')[0].strip()
 
 def clean_subject(subject):
+    # 1. Strip system merge noise
     subject = re.sub(r'^Merged PR \d+: ', '', subject, flags=re.IGNORECASE)
+    # 2. Strip "Cherry-pick" noise from UI-based cherry picks
+    subject = re.sub(r'^Cherry-?pick\s+"?', '', subject, flags=re.IGNORECASE)
+    subject = re.sub(r'"?\s+into\s+release/.*$', '', subject, flags=re.IGNORECASE)
+    subject = re.sub(r'"?\s+into\s+develop.*$', '', subject, flags=re.IGNORECASE)
+    # 3. Strip Jira IDs
     subject = re.sub(r'ALP[-_]?\d+', '', subject, flags=re.IGNORECASE)
+    # 4. Strip "Revert" and cleanup
     subject = re.sub(r'^Revert\s+"?', '', subject, flags=re.IGNORECASE)
     subject = re.sub(r'[^\w\s]', '', subject)
     return subject.strip().lower()
