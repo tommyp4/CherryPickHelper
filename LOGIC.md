@@ -15,8 +15,8 @@ This document defines the complete end-to-end logic for the Cherry-Pick Helper w
 ### 2. Detection Precedence (If-Else)
 For each commit, the script checks these rules in order. **The first match determines the result.**
 
-1.  **Commit Link Match**: If the commit hash is explicitly mentioned in a release branch PR description (e.g., "Cherry-picked from commit abc1234") ➔ **`In Release: Yes (Commit Link Match: abc1234)`**.
-2.  **PR Link Match**: If the commit belongs to a PR that is explicitly mentioned in a release branch PR description (e.g., "Cherry picked from !1234") ➔ **`In Release: Yes (PR Link Match: !1234)`**.
+1.  **Commit Link Match**: If the commit hash is explicitly mentioned in a release branch PR description or commit body (e.g., "Cherry-picked from commit abc1234") ➔ **`In Release: Yes (Commit Link Match: abc1234)`**.
+2.  **PR Link Match**: If the commit belongs to a PR that is explicitly mentioned in a release branch commit body **or** the full Azure DevOps PR description (Deep PR Scanning) ➔ **`In Release: Yes (PR Link Match)`**.
 3.  **Exact Global Match**: If the total count of (Author, Subject) pairs matches exactly between branches ➔ **`In Release: Yes (Exact Match)`**.
 4.  **Global Count Mismatch**: If the counts for an (Author, Subject) pair do not match ➔ **`In Release: Needs attention (Subject Count Mismatch)`** for all instances.
 5.  **Jira Ticket Content Match**: If the Jira ID exists in release and the total count of that specific subject for that ticket matches exactly ➔ **`In Release: Yes (Ticket Match)`**.
@@ -24,10 +24,22 @@ For each commit, the script checks these rules in order. **The first match deter
 7.  **Jira ID Match**: If the Jira ID exists in release but the subject is unknown for that ticket ➔ **`In Release: Likely`**.
 8.  **Default**: If none of the above ➔ **`In Release: No`**.
 
-### 3. Baseline Decision
+### 3. High-Fidelity Data Retrieval
+The script uses several "Deep Scanning" techniques to maximize accuracy:
+- **Full Message Fidelity**: Always retrieves the complete multi-line Git commit body to ensure no Jira IDs or PR links are missed in truncated subjects.
+- **Deep PR Scanning**: Queries the Azure DevOps API to read the full **PR Description** for release merge commits, finding original PR links that never made it into the Git log.
+- **Batch PR Context**: Maps every develop commit to its parent PR ID using optimized 10-query API batches.
+- **Inferred PR Linking**: When a commit is matched via "Exact" or "Ticket" rules, the script automatically identifies the associated Release PR ID from the inventory.
+
+### 4. Baseline Decision
 - If `Yes` ➔ `cherry pick?` = **`no`**.
 - If `No` ➔ `cherry pick?` = **`yes`**.
 - If `Likely` or `Needs attention` ➔ `cherry pick?` = **`(blank)`**.
+
+### 5. Reporting Features
+- **PR Link**: Always contains a clickable link to the original `develop` Pull Request (if identified).
+- **Matched Release PR**: Contains a clickable link to the specific hotfix/release Pull Request where the work was found (for all "Yes" matches).
+- **Visual Styling**: All links are rendered with native Excel hyperlink objects, including Blue-Underline styling for clear clickability.
 
 ---
 
