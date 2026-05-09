@@ -113,21 +113,23 @@ def main():
     start_dt = datetime.strptime(config.start_date, '%Y-%m-%d %H:%M')
 
     # === 1. SCAN RELEASE HISTORIES (Building Inventories) ===
-    release_global_inventory = {} 
-    release_jira_inventory = {}
+    release_global_inventory = {} # (author, cleaned) -> {'count': 0, 'prs': set()}
+    release_jira_inventory = {}   # jira_id -> {cleaned: {'count': 0, 'prs': set()}}
     release_linked_prs = {} # { original_pr_id: release_pr_id }
     release_linked_commits = set()
     all_release_cleaned_subjects = set()
 
     branches_to_check = [config.check_target_branch, config.cherry_pick_base_branch]
+    pr_description_cache = {} # { pr_id: description_text }
+
     for branch_name in branches_to_check:
         print(f"Inventorying '{branch_name}' starting from {config.start_date}...")
         try:
             ver = GitVersionDescriptor(version=branch_name, version_type='branch')
             crit = GitQueryCommitsCriteria(item_version=ver, from_date=config.start_date)
             
-            b_global = {}
-            b_jira = {} 
+            b_global = {} # (author, cleaned) -> {'count': 0, 'prs': set()}
+            b_jira = {}   # jira_id -> {cleaned: {'count': 0, 'prs': set()}}
 
             commits = git_client.get_commits(repo.id, search_criteria=crit, project=config.project_name, top=1000)
             if commits:
@@ -149,8 +151,22 @@ def main():
                     rel_pr_match = re.search(r'^Merged PR (\d+):', subj, re.IGNORECASE)
                     release_pr_id = rel_pr_match.group(1) if rel_pr_match else None
 
-                    # High-fidelity link extraction (Aggressive PR ID search)
+                    # DEEP PR SCANNING: Fetch description from API if we found a PR ID
+                    pr_body_links = set()
+                    if release_pr_id:
+                        if release_pr_id not in pr_description_cache:
+                            try:
+                                pr_detail = git_client.get_pull_request(repo.id, int(release_pr_id), project=config.project_name)
+                                pr_description_cache[release_pr_id] = pr_detail.description if pr_detail.description else ""
+                            except:
+                                pr_description_cache[release_pr_id] = ""
+                        
+                        pr_body_links = extract_all_pr_ids(pr_description_cache[release_pr_id])
+
+                    # High-fidelity link extraction (Combine commit msg + PR body links)
                     found_pr_ids = extract_all_pr_ids(msg)
+                    found_pr_ids.update(pr_body_links)
+
                     for pid in found_pr_ids:
                         if pid != release_pr_id: # Don't map it back to itself
                             release_linked_prs[pid] = release_pr_id
@@ -162,23 +178,32 @@ def main():
                         all_release_cleaned_subjects.add(cleaned)
                         if author:
                             key = (author, cleaned)
-                            b_global[key] = b_global.get(key, 0) + 1
+                            if key not in b_global: b_global[key] = {'count': 0, 'prs': set()}
+                            b_global[key]['count'] += 1
+                            if release_pr_id: b_global[key]['prs'].add(release_pr_id)
                         if jira:
                             if jira not in b_jira: b_jira[jira] = {}
-                            b_jira[jira][cleaned] = b_jira[jira].get(cleaned, 0) + 1
+                            if cleaned not in b_jira[jira]: b_jira[jira][cleaned] = {'count': 0, 'prs': set()}
+                            b_jira[jira][cleaned]['count'] += 1
+                            if release_pr_id: b_jira[jira][cleaned]['prs'].add(release_pr_id)
             
+            # Merge branch results into global inventory
             for k, v in b_global.items():
-                release_global_inventory[k] = max(release_global_inventory.get(k, 0), v)
+                if k not in release_global_inventory: release_global_inventory[k] = {'count': 0, 'prs': set()}
+                release_global_inventory[k]['count'] = max(release_global_inventory[k]['count'], v['count'])
+                release_global_inventory[k]['prs'].update(v['prs'])
             for jid, sub_counts in b_jira.items():
                 if jid not in release_jira_inventory: release_jira_inventory[jid] = {}
                 for s, v in sub_counts.items():
-                    release_jira_inventory[jid][s] = max(release_jira_inventory[jid].get(s, 0), v)
+                    if s not in release_jira_inventory[jid]: release_jira_inventory[jid][s] = {'count': 0, 'prs': set()}
+                    release_jira_inventory[jid][s]['count'] = max(release_jira_inventory[jid][s]['count'], v['count'])
+                    release_jira_inventory[jid][s]['prs'].update(v['prs'])
         except Exception as e:
             print(f"Warning: Could not scan {branch_name}: {e}")
 
     print(f"Found {len(release_linked_prs)} unique PR links and {len(release_linked_commits)} commit links in release history.")
-    initial_global_inventory = release_global_inventory.copy()
-    initial_jira_inventory = {jid: counts.copy() for jid, counts in release_jira_inventory.items()}
+    initial_global_inventory = {k: v.copy() for k, v in release_global_inventory.items()}
+    initial_jira_inventory = {jid: {s: v.copy() for s, v in subs.items()} for jid, subs in release_jira_inventory.items()}
 
     # === 2. SCAN DEVELOP (Phase A: Collection & Dependency Analysis) ===
     print(f"Scanning history of '{config.main_target_branch}'...")
@@ -335,8 +360,21 @@ def main():
         display_pr = next((p for p in my_prs if p in release_linked_prs), (sorted(list(my_prs))[0] if my_prs else None))
         pr_url = f"{config.organization_url}/{config.project_name}/_git/{config.repository_name}/pullrequest/{display_pr}" if display_pr else None
 
-        # Link to the Matched Release PR (only if it actually exists in our linked map)
+        # Link to the Matched Release PR
+        # 1. Try explicit link first
         matched_release_pr_id = release_linked_prs.get(display_pr) if display_pr in release_linked_prs else None
+        
+        # 2. Fallback to inferred links from inventories if matched
+        if not matched_release_pr_id:
+            g_key = (author, cleaned)
+            if is_in_release == "Yes (Exact Match)" and g_key in release_global_inventory:
+                prs = release_global_inventory[g_key]['prs']
+                if prs: matched_release_pr_id = sorted(list(prs))[0]
+            elif is_in_release == "Yes (Ticket Match)" and jira in release_jira_inventory:
+                if cleaned in release_jira_inventory[jira]:
+                    prs = release_jira_inventory[jira][cleaned]['prs']
+                    if prs: matched_release_pr_id = sorted(list(prs))[0]
+        
         matched_rel_url = f"{config.organization_url}/{config.project_name}/_git/{config.repository_name}/pullrequest/{matched_release_pr_id}" if matched_release_pr_id else None
 
         all_final_rows.append({
