@@ -115,7 +115,13 @@ def main():
                             elif is_likely or current_status.startswith("Needs attention"):
                                 ws.cell(row=row_idx, column=decision_col).value = ''
                             elif any(v == config.jira_branched_from_version for v in versions):
-                                ws.cell(row=row_idx, column=decision_col).value = 'no'
+                                # SAFETY CATCH: If Jira says it's in the old release but Git says it's MISSING,
+                                # we should treat it as a required cherry-pick (Missed work).
+                                if current_status == "No":
+                                    ws.cell(row=row_idx, column=decision_col).value = 'yes'
+                                    version_str += " (⚠️ Missed in previous release?)"
+                                else:
+                                    ws.cell(row=row_idx, column=decision_col).value = 'no'
                             elif any(v == config.jira_target_version for v in versions):
                                 ws.cell(row=row_idx, column=decision_col).value = 'yes'
                             elif any(v in hotfix_set for v in versions):
