@@ -49,7 +49,7 @@ Overwrites baseline decisions using official Jira metadata. **Rules are checked 
 
 | If Jira Fix Version... | New Decision (`cherry pick?`) | Rationale |
 | :--- | :--- | :--- |
-| **Matches `jira_branched_from_version`** | **no** | **No cherry pick.** Already in the old release. |
+| **Matches `jira_branched_from_version`** | **no / yes** | **Safety Catch**: 'no' if code is present; 'yes' if code is missing (missed work). |
 | **Matches `jira_target_version`** | **yes** | **Cherry pick.** Explicitly assigned to this target. |
 | **Matches any in `jira_hotfix_versions`** | **yes** | **Cherry pick.** Mandatory hotfix target. |
 | **Is an "Other" version** | **no** | Assigned to a future release. |
@@ -58,7 +58,9 @@ Overwrites baseline decisions using official Jira metadata. **Rules are checked 
 ### Order of Precedence (If-Else)
 1.  **Physical Safety**: If Git Status is `Yes`, decision is always **`no`** (cannot cherry-pick what is already there).
 2.  **Ambiguity Safety**: If Git Status is `Likely` or `Needs attention`, decision is always **`(blank)`** (requires human review).
-3.  **Old Release**: If Fix Version matches `jira_branched_from_version` ➔ **`no`**.
+3.  **Old Release (Safety Catch)**: If Fix Version matches `jira_branched_from_version`:
+    *   If Git Status is `No` ➔ **`yes`** (Identified as missed work in previous release).
+    *   If Git Status is `Yes` ➔ **`no`** (Correctly present in previous release).
 4.  **Target Release**: If Fix Version matches `jira_target_version` ➔ **`yes`**.
 5.  **Mandatory Hotfix**: If Fix Version matches any in `jira_hotfix_versions` ➔ **`yes`**.
 6.  **Future Release**: If Fix Version matches any other version ➔ **`no`**.
