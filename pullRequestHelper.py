@@ -94,6 +94,15 @@ def get_commit_files(git_client, repo_id, commit_id, project):
     except:
         return set()
 
+def extract_all_pr_ids(text):
+    """Extracts all PR IDs (e.g. !1234 or PR 1234) from text."""
+    if not text: return set()
+    # Find !1234
+    ids = set(re.findall(r'!(\d+)', text))
+    # Find PR 1234
+    ids.update(re.findall(r'PR\s?(\d+)', text, re.IGNORECASE))
+    return ids
+
 def main():
     # === AUTHENTICATION ===
     credentials = BasicAuthentication('', config.personal_access_token)
@@ -140,11 +149,11 @@ def main():
                     rel_pr_match = re.search(r'^Merged PR (\d+):', subj, re.IGNORECASE)
                     release_pr_id = rel_pr_match.group(1) if rel_pr_match else None
 
-                    # High-fidelity link extraction
-                    linked_pr = extract_original_pr_id(msg)
-                    if linked_pr: 
-                        # Store mapping: what was cherry-picked -> into which release PR
-                        release_linked_prs[linked_pr] = release_pr_id
+                    # High-fidelity link extraction (Aggressive PR ID search)
+                    found_pr_ids = extract_all_pr_ids(msg)
+                    for pid in found_pr_ids:
+                        if pid != release_pr_id: # Don't map it back to itself
+                            release_linked_prs[pid] = release_pr_id
                     
                     linked_commit = extract_original_commit_id(msg)
                     if linked_commit: release_linked_commits.add(linked_commit)
@@ -318,24 +327,27 @@ def main():
             
             decision = "no" if is_in_release.startswith("Yes") else "yes" if is_in_release == "No" else ""
 
-        jira_link = f'=HYPERLINK("{config.jira_base_url}{jira}","{jira}")' if jira else ""
+        jira_url = f"{config.jira_base_url}{jira}" if jira else None
         
         # Determine PR ID to link (Always link if known, even if not matched in release)
         my_prs = commit_to_pr_map.get(commit_id.lower(), set())
         # Prioritize the matched release PR if it exists, otherwise just the first PR found
         display_pr = next((p for p in my_prs if p in release_linked_prs), (sorted(list(my_prs))[0] if my_prs else None))
-        pr_link = f'=HYPERLINK("{config.organization_url}/{config.project_name}/_git/{config.repository_name}/pullrequest/{display_pr}","!{display_pr}")' if display_pr else ""
+        pr_url = f"{config.organization_url}/{config.project_name}/_git/{config.repository_name}/pullrequest/{display_pr}" if display_pr else None
 
         # Link to the Matched Release PR (only if it actually exists in our linked map)
         matched_release_pr_id = release_linked_prs.get(display_pr) if display_pr in release_linked_prs else None
-        matched_rel_link = f'=HYPERLINK("{config.organization_url}/{config.project_name}/_git/{config.repository_name}/pullrequest/{matched_release_pr_id}","!{matched_release_pr_id}")' if matched_release_pr_id else ""
+        matched_rel_url = f"{config.organization_url}/{config.project_name}/_git/{config.repository_name}/pullrequest/{matched_release_pr_id}" if matched_release_pr_id else None
 
         all_final_rows.append({
             'Commit ID': item['commit'].commit_id,
             'Author': author,
-            'Jira Link': jira_link,
-            'PR Link': pr_link,
-            'Matched Release PR': matched_rel_link,
+            'Jira Link': jira,
+            'Jira URL': jira_url,
+            'PR Link': f"!{display_pr}" if display_pr else "",
+            'PR URL': pr_url,
+            'Matched Release PR': f"!{matched_release_pr_id}" if matched_release_pr_id else "",
+            'Matched Rel URL': matched_rel_url,
             'Date': item['date'],
             'Message': item['full_msg'],
             'In Release?': is_in_release,
@@ -348,7 +360,7 @@ def main():
 
     # === SAVE TO EXCEL (Using openpyxl for pipeline compatibility) ===
     from openpyxl import Workbook
-    from openpyxl.utils import get_column_letter
+    from openpyxl.styles import Font
 
     wb = Workbook()
     ws = wb.active
@@ -363,9 +375,28 @@ def main():
     for row_idx, data in enumerate(all_final_rows, 2):
         ws.cell(row=row_idx, column=1).value = data['Commit ID']
         ws.cell(row=row_idx, column=2).value = data['Author']
-        ws.cell(row=row_idx, column=3).value = data['Jira Link']
-        ws.cell(row=row_idx, column=4).value = data['PR Link']
-        ws.cell(row=row_idx, column=5).value = data['Matched Release PR']
+        
+        # Jira Link
+        c3 = ws.cell(row=row_idx, column=3)
+        c3.value = data['Jira Link']
+        if data['Jira URL']:
+            c3.hyperlink = data['Jira URL']
+            c3.font = Font(color="0000FF", underline="single")
+
+        # PR Link
+        c4 = ws.cell(row=row_idx, column=4)
+        c4.value = data['PR Link']
+        if data['PR URL']:
+            c4.hyperlink = data['PR URL']
+            c4.font = Font(color="0000FF", underline="single")
+
+        # Matched Release PR
+        c5 = ws.cell(row=row_idx, column=5)
+        c5.value = data['Matched Release PR']
+        if data['Matched Rel URL']:
+            c5.hyperlink = data['Matched Rel URL']
+            c5.font = Font(color="0000FF", underline="single")
+
         ws.cell(row=row_idx, column=6).value = data['Date']
         ws.cell(row=row_idx, column=7).value = data['Message']
         ws.cell(row=row_idx, column=8).value = data['In Release?']
