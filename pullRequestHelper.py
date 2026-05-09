@@ -226,13 +226,18 @@ def main():
                 if skip > 300: skip = 1500; break
                 continue
 
-            msg = commit.comment.strip()
+            try:
+                # Always fetch full details to ensure we get the complete message body/comment
+                full_commit = git_client.get_commit(commit.commit_id, repo.id, project=config.project_name)
+                msg = full_commit.comment.strip()
+            except:
+                msg = commit.comment.strip() # Fallback
+
             subject = get_first_line(msg)
             
             # Skip structural PR merge records
             if subject.startswith("Merged PR"):
-                full = git_client.get_commit(commit.commit_id, repo.id, project=config.project_name)
-                if full.parents and len(full.parents) > 1: continue
+                if full_commit.parents and len(full_commit.parents) > 1: continue
 
             matched_author = get_matched_config_author(commit.author.name, config.authors)
             
