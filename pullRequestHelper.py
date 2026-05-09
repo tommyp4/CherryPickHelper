@@ -57,7 +57,7 @@ def get_pr_ids_for_commits(git_client, repo_id, project, commit_ids):
     total_found = 0
     # Process in chunks of 10 (Azure DevOps API limit)
     for i in range(0, len(commit_ids), 10):
-        chunk = commit_ids[i:i+10]
+        chunk = [cid.lower() for cid in commit_ids[i:i+10]]
         try:
             query = GitPullRequestQuery(
                 queries=[GitPullRequestQueryInput(items=[cid], type='commit') for cid in chunk]
@@ -67,7 +67,8 @@ def get_pr_ids_for_commits(git_client, repo_id, project, commit_ids):
                 for mapping in resp.results:
                     for cid, prs in mapping.items():
                         if prs:
-                            results[cid] = {str(pr.pull_request_id) for pr in prs}
+                            # Normalize key to lowercase
+                            results[cid.lower()] = {str(pr.pull_request_id) for pr in prs}
                             total_found += 1
         except Exception as e:
             pass # Silent fail for individual chunks
@@ -105,7 +106,7 @@ def main():
     # === 1. SCAN RELEASE HISTORIES (Building Inventories) ===
     release_global_inventory = {} 
     release_jira_inventory = {}
-    release_linked_prs = set()
+    release_linked_prs = {} # { original_pr_id: release_pr_id }
     release_linked_commits = set()
     all_release_cleaned_subjects = set()
 
@@ -135,9 +136,15 @@ def main():
                     author = get_matched_config_author(c.author.name, config.authors)
                     jira = extract_jira_id(msg)
 
+                    # Extract Release PR ID from subject (e.g., "Merged PR 1234: ...")
+                    rel_pr_match = re.search(r'^Merged PR (\d+):', subj, re.IGNORECASE)
+                    release_pr_id = rel_pr_match.group(1) if rel_pr_match else None
+
                     # High-fidelity link extraction
                     linked_pr = extract_original_pr_id(msg)
-                    if linked_pr: release_linked_prs.add(linked_pr)
+                    if linked_pr: 
+                        # Store mapping: what was cherry-picked -> into which release PR
+                        release_linked_prs[linked_pr] = release_pr_id
                     
                     linked_commit = extract_original_commit_id(msg)
                     if linked_commit: release_linked_commits.add(linked_commit)
@@ -278,10 +285,10 @@ def main():
         else:
             # 1. High-fidelity Link Matching (Highest Confidence)
             # Check for direct commit ID match (short or long)
-            matched_linked_commit = next((c for c in release_linked_commits if commit_id.startswith(c) or c.startswith(commit_id)), None)
+            matched_linked_commit = next((c for c in release_linked_commits if commit_id.lower().startswith(c.lower()) or c.lower().startswith(commit_id.lower())), None)
             
             # Check for PR ID match
-            my_prs = commit_to_pr_map.get(commit_id, set())
+            my_prs = commit_to_pr_map.get(commit_id.lower(), set())
             matched_linked_pr = next((p for p in my_prs if p in release_linked_prs), None)
 
             if matched_linked_commit:
@@ -313,17 +320,22 @@ def main():
 
         jira_link = f'=HYPERLINK("{config.jira_base_url}{jira}","{jira}")' if jira else ""
         
-        # Determine PR ID to link (prioritize the one that matched, then the first available)
-        my_prs = commit_to_pr_map.get(commit_id, set())
-        # We need to re-find matched_linked_pr here or just use the logic from above
+        # Determine PR ID to link (Always link if known, even if not matched in release)
+        my_prs = commit_to_pr_map.get(commit_id.lower(), set())
+        # Prioritize the matched release PR if it exists, otherwise just the first PR found
         display_pr = next((p for p in my_prs if p in release_linked_prs), (sorted(list(my_prs))[0] if my_prs else None))
         pr_link = f'=HYPERLINK("{config.organization_url}/{config.project_name}/_git/{config.repository_name}/pullrequest/{display_pr}","!{display_pr}")' if display_pr else ""
+
+        # Link to the Matched Release PR (only if it actually exists in our linked map)
+        matched_release_pr_id = release_linked_prs.get(display_pr) if display_pr in release_linked_prs else None
+        matched_rel_link = f'=HYPERLINK("{config.organization_url}/{config.project_name}/_git/{config.repository_name}/pullrequest/{matched_release_pr_id}","!{matched_release_pr_id}")' if matched_release_pr_id else ""
 
         all_final_rows.append({
             'Commit ID': item['commit'].commit_id,
             'Author': author,
             'Jira Link': jira_link,
             'PR Link': pr_link,
+            'Matched Release PR': matched_rel_link,
             'Date': item['date'],
             'Message': item['full_msg'],
             'In Release?': is_in_release,
@@ -334,11 +346,37 @@ def main():
     for k, v in match_counts.items():
         print(f"  - {k}: {v}")
 
-    df = pd.DataFrame(all_final_rows)
+    # === SAVE TO EXCEL (Using openpyxl for pipeline compatibility) ===
+    from openpyxl import Workbook
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Commits"
+
+    # Write Headers
+    headers = ['Commit ID', 'Author', 'Jira Link', 'PR Link', 'Matched Release PR', 'Date', 'Message', 'In Release?', 'cherry pick?']
+    for col, header in enumerate(headers, 1):
+        ws.cell(row=1, column=col).value = header
+
+    # Write Rows
+    for row_idx, data in enumerate(all_final_rows, 2):
+        ws.cell(row=row_idx, column=1).value = data['Commit ID']
+        ws.cell(row=row_idx, column=2).value = data['Author']
+        ws.cell(row=row_idx, column=3).value = data['Jira Link']
+        ws.cell(row=row_idx, column=4).value = data['PR Link']
+        ws.cell(row=row_idx, column=5).value = data['Matched Release PR']
+        ws.cell(row=row_idx, column=6).value = data['Date']
+        ws.cell(row=row_idx, column=7).value = data['Message']
+        ws.cell(row=row_idx, column=8).value = data['In Release?']
+        ws.cell(row=row_idx, column=9).value = data['cherry pick?']
+
+    excel_file = 'cherrypick_list.xlsx'
     try:
-        df.to_excel('cherrypick_list.xlsx', index=False, engine='openpyxl')
-        print(f"Successfully saved {len(all_final_rows)} commits to cherrypick_list.xlsx")
-    except: print(f"❌ Error: Close the file.")
+        wb.save(excel_file)
+        print(f"Successfully saved {len(all_final_rows)} commits to {excel_file}")
+    except: 
+        print(f"❌ Error: Close the file {excel_file}.")
 
 if __name__ == "__main__":
     main()
