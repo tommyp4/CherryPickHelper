@@ -281,7 +281,7 @@ def main():
                 is_in_release = f"Yes (Commit Link Match: {matched_linked_commit[:8]})"
                 match_counts["Commit Link"] += 1
             elif matched_linked_pr:
-                is_in_release = f"Yes (PR Link Match: !{matched_linked_pr})"
+                is_in_release = "Yes (PR Link Match)"
                 match_counts["PR Link"] += 1
             else:
                 # 2. Standard Heuristic Rules
@@ -305,10 +305,18 @@ def main():
             decision = "no" if is_in_release.startswith("Yes") else "yes" if is_in_release == "No" else ""
 
         jira_link = f'=HYPERLINK("{config.jira_base_url}{jira}","{jira}")' if jira else ""
+        
+        # Determine PR ID to link (prioritize the one that matched, then the first available)
+        my_prs = commit_to_pr_map.get(commit_id, set())
+        # We need to re-find matched_linked_pr here or just use the logic from above
+        display_pr = next((p for p in my_prs if p in release_linked_prs), (sorted(list(my_prs))[0] if my_prs else None))
+        pr_link = f'=HYPERLINK("{config.organization_url}/{config.project_name}/_git/{config.repository_name}/pullrequest/{display_pr}","!{display_pr}")' if display_pr else ""
+
         all_final_rows.append({
             'Commit ID': item['commit'].commit_id,
             'Author': author,
             'Jira Link': jira_link,
+            'PR Link': pr_link,
             'Date': item['date'],
             'Message': item['full_msg'],
             'In Release?': is_in_release,
