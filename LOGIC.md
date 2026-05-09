@@ -15,12 +15,14 @@ This document defines the complete end-to-end logic for the Cherry-Pick Helper w
 ### 2. Detection Precedence (If-Else)
 For each commit, the script checks these rules in order. **The first match determines the result.**
 
-1.  **Exact Global Match**: If the total count of (Author, Subject) pairs matches exactly between branches ➔ **`In Release: Yes (Exact Match)`**.
-2.  **Global Count Mismatch**: If the counts for an (Author, Subject) pair do not match ➔ **`In Release: Needs attention (Subject Count Mismatch)`** for all instances.
-3.  **Jira Ticket Content Match**: If the Jira ID exists in release and the total count of that specific subject for that ticket matches exactly ➔ **`In Release: Yes (Ticket Match)`**.
-4.  **Jira Ticket Count Mismatch**: If the counts for a specific subject within a Jira ticket do not match ➔ **`In Release: Needs attention (Ticket Count Mismatch)`** for all instances.
-5.  **Jira ID Match**: If the Jira ID exists in release but the subject is unknown for that ticket ➔ **`In Release: Likely`**.
-6.  **Default**: If none of the above ➔ **`In Release: No`**.
+1.  **Commit Link Match**: If the commit hash is explicitly mentioned in a release branch PR description (e.g., "Cherry-picked from commit abc1234") ➔ **`In Release: Yes (Commit Link Match: abc1234)`**.
+2.  **PR Link Match**: If the commit belongs to a PR that is explicitly mentioned in a release branch PR description (e.g., "Cherry picked from !1234") ➔ **`In Release: Yes (PR Link Match: !1234)`**.
+3.  **Exact Global Match**: If the total count of (Author, Subject) pairs matches exactly between branches ➔ **`In Release: Yes (Exact Match)`**.
+4.  **Global Count Mismatch**: If the counts for an (Author, Subject) pair do not match ➔ **`In Release: Needs attention (Subject Count Mismatch)`** for all instances.
+5.  **Jira Ticket Content Match**: If the Jira ID exists in release and the total count of that specific subject for that ticket matches exactly ➔ **`In Release: Yes (Ticket Match)`**.
+6.  **Jira Ticket Count Mismatch**: If the counts for a specific subject within a Jira ticket do not match ➔ **`In Release: Needs attention (Ticket Count Mismatch)`** for all instances.
+7.  **Jira ID Match**: If the Jira ID exists in release but the subject is unknown for that ticket ➔ **`In Release: Likely`**.
+8.  **Default**: If none of the above ➔ **`In Release: No`**.
 
 ### 3. Baseline Decision
 - If `Yes` ➔ `cherry pick?` = **`no`**.

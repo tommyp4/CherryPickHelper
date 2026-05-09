@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from azure.devops.connection import Connection
 from msrest.authentication import BasicAuthentication
-from azure.devops.v7_1.git.models import GitQueryCommitsCriteria, GitVersionDescriptor, GitPullRequestSearchCriteria
+from azure.devops.v7_1.git.models import GitQueryCommitsCriteria, GitVersionDescriptor, GitPullRequestSearchCriteria, GitPullRequestQuery, GitPullRequestQueryInput
 import config
 
 def get_first_line(msg):
@@ -22,6 +22,50 @@ def extract_jira_id(text):
     if match:
         return f"ALP-{match.group(1)}"
     return None
+
+def extract_original_pr_id(text):
+    """Looks for 'cherry picked from !1234' in commit message."""
+    if not text: return None
+    match = re.search(r'cherry[- ]picked from !(\d+)', text, re.IGNORECASE)
+    if match:
+        res = match.group(1)
+        # print(f"DEBUG: Found PR link !{res} in text: {text[:50]}...")
+        return res
+    return None
+
+def extract_original_commit_id(text):
+    """Looks for 'cherry-picked from commit a8feecf1' in commit message."""
+    if not text: return None
+    match = re.search(r'cherry[- ]picked from commit `?([a-f0-9]{7,40})`?', text, re.IGNORECASE)
+    if match:
+        res = match.group(1)
+        # print(f"DEBUG: Found Commit link {res} in text: {text[:50]}...")
+        return res
+    return None
+
+def get_pr_ids_for_commits(git_client, repo_id, project, commit_ids):
+    """Batch queries Azure DevOps for PRs associated with commit IDs."""
+    results = {}
+    commit_ids = list(set(commit_ids))
+    total_found = 0
+    # Process in chunks of 10 (Azure DevOps API limit)
+    for i in range(0, len(commit_ids), 10):
+        chunk = commit_ids[i:i+10]
+        try:
+            query = GitPullRequestQuery(
+                queries=[GitPullRequestQueryInput(items=[cid], type='commit') for cid in chunk]
+            )
+            resp = git_client.get_pull_request_query(query, repo_id, project=project)
+            if resp and resp.results:
+                for mapping in resp.results:
+                    for cid, prs in mapping.items():
+                        if prs:
+                            results[cid] = {str(pr.pull_request_id) for pr in prs}
+                            total_found += 1
+        except Exception as e:
+            pass # Silent fail for individual chunks
+    print(f"  PR Context: Found PRs for {total_found} out of {len(commit_ids)} commits.")
+    return results
 
 def get_matched_config_author(repo_name, target_list):
     """Returns the config name if matched, else None."""
@@ -54,6 +98,8 @@ def main():
     # === 1. SCAN RELEASE HISTORIES (Building Inventories) ===
     release_global_inventory = {} 
     release_jira_inventory = {}
+    release_linked_prs = set()
+    release_linked_commits = set()
     all_release_cleaned_subjects = set()
 
     branches_to_check = [config.check_target_branch, config.cherry_pick_base_branch]
@@ -68,11 +114,27 @@ def main():
 
             commits = git_client.get_commits(repo.id, search_criteria=crit, project=config.project_name, top=1000)
             if commits:
+                print(f"  Processing {len(commits)} commits in {branch_name} (fetching full details)...")
                 for c in commits:
-                    subj = get_first_line(c.comment)
+                    try:
+                        # Always fetch full details to ensure we get the complete message body/comment
+                        full_c = git_client.get_commit(c.commit_id, repo.id, project=config.project_name)
+                        msg = full_c.comment
+                    except:
+                        msg = c.comment # Fallback if full fetch fails
+
+                    subj = get_first_line(msg)
                     cleaned = clean_subject(subj)
                     author = get_matched_config_author(c.author.name, config.authors)
-                    jira = extract_jira_id(c.comment)
+                    jira = extract_jira_id(msg)
+
+                    # High-fidelity link extraction
+                    linked_pr = extract_original_pr_id(msg)
+                    if linked_pr: release_linked_prs.add(linked_pr)
+                    
+                    linked_commit = extract_original_commit_id(msg)
+                    if linked_commit: release_linked_commits.add(linked_commit)
+
                     if cleaned:
                         all_release_cleaned_subjects.add(cleaned)
                         if author:
@@ -91,6 +153,7 @@ def main():
         except Exception as e:
             print(f"Warning: Could not scan {branch_name}: {e}")
 
+    print(f"Found {len(release_linked_prs)} unique PR links and {len(release_linked_commits)} commit links in release history.")
     initial_global_inventory = release_global_inventory.copy()
     initial_jira_inventory = {jid: counts.copy() for jid, counts in release_jira_inventory.items()}
 
@@ -126,7 +189,7 @@ def main():
             matched_author = get_matched_config_author(commit.author.name, config.authors)
             
             if matched_author:
-                print(f"  Team commit: {commit.commit_id[:8]} by {matched_author}")
+                # print(f"  Team commit: {commit.commit_id[:8]} by {matched_author}")
                 # Fetch files to build dependency map
                 files = get_commit_files(git_client, repo.id, commit.commit_id, config.project_name)
                 team_files.update(files)
@@ -175,6 +238,11 @@ def main():
     # Recalculate develop counts for combined list
     dev_global_counts = {}
     dev_jira_counts = {}
+    all_dev_commit_ids = [item['commit'].commit_id for item in all_develop_work]
+    
+    print(f"Fetching PR context for {len(all_dev_commit_ids)} develop commits...")
+    commit_to_pr_map = get_pr_ids_for_commits(git_client, repo.id, config.project_name, all_dev_commit_ids)
+
     for item in all_develop_work:
         if item['type'] == 'Team':
             g_key = (item['author'], item['cleaned'])
@@ -187,29 +255,52 @@ def main():
     # === 4. DECISION LOGIC ===
     print(f"Analyzing {len(all_develop_work)} total relevant commits...")
     all_final_rows = []
+    
+    match_counts = {"PR Link": 0, "Commit Link": 0, "Exact": 0, "Ticket": 0, "No": 0}
 
     for item in all_develop_work:
         is_in_release = "No"
         author = item['author']
         cleaned = item['cleaned']
         jira = item['jira']
+        commit_id = item['commit'].commit_id
         
         if item['type'] == 'Dependency':
             is_in_release = f"Foreign commit touching {item['overlap_files'][0]}"
             decision = "" # Leave blank for review
         else:
-            g_key = (author, cleaned)
-            # Standard rules
-            if g_key in release_global_inventory:
-                if dev_global_counts[g_key] == release_global_inventory[g_key]:
-                    is_in_release = "Yes (Exact Match)"
-                else: is_in_release = "Needs attention (Subject Count Mismatch)"
-            elif jira and jira in release_jira_inventory:
-                if cleaned in release_jira_inventory[jira]:
-                    if dev_jira_counts[jira][cleaned] == release_jira_inventory[jira][cleaned]:
-                        is_in_release = "Yes (Ticket Match)"
-                    else: is_in_release = "Needs attention (Ticket Count Mismatch)"
-                else: is_in_release = f"Likely (Jira {jira} exists, but subjects differ)"
+            # 1. High-fidelity Link Matching (Highest Confidence)
+            # Check for direct commit ID match (short or long)
+            matched_linked_commit = next((c for c in release_linked_commits if commit_id.startswith(c) or c.startswith(commit_id)), None)
+            
+            # Check for PR ID match
+            my_prs = commit_to_pr_map.get(commit_id, set())
+            matched_linked_pr = next((p for p in my_prs if p in release_linked_prs), None)
+
+            if matched_linked_commit:
+                is_in_release = f"Yes (Commit Link Match: {matched_linked_commit[:8]})"
+                match_counts["Commit Link"] += 1
+            elif matched_linked_pr:
+                is_in_release = f"Yes (PR Link Match: !{matched_linked_pr})"
+                match_counts["PR Link"] += 1
+            else:
+                # 2. Standard Heuristic Rules
+                g_key = (author, cleaned)
+                if g_key in release_global_inventory:
+                    if dev_global_counts[g_key] == release_global_inventory[g_key]:
+                        is_in_release = "Yes (Exact Match)"
+                        match_counts["Exact"] += 1
+                    else: is_in_release = "Needs attention (Subject Count Mismatch)"
+                elif jira and jira in release_jira_inventory:
+                    if cleaned in release_jira_inventory[jira]:
+                        if dev_jira_counts[jira][cleaned] == release_jira_inventory[jira][cleaned]:
+                            is_in_release = "Yes (Ticket Match)"
+                            match_counts["Ticket"] += 1
+                        else: is_in_release = "Needs attention (Ticket Count Mismatch)"
+                    else: is_in_release = f"Likely (Jira {jira} exists, but subjects differ)"
+                
+                if is_in_release == "No":
+                    match_counts["No"] += 1
             
             decision = "no" if is_in_release.startswith("Yes") else "yes" if is_in_release == "No" else ""
 
@@ -223,6 +314,10 @@ def main():
             'In Release?': is_in_release,
             'cherry pick?': decision
         })
+
+    print(f"\nDecision Summary:")
+    for k, v in match_counts.items():
+        print(f"  - {k}: {v}")
 
     df = pd.DataFrame(all_final_rows)
     try:
