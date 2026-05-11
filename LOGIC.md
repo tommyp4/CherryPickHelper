@@ -59,7 +59,7 @@ Overwrites baseline decisions using official Jira metadata. **Rules are checked 
 1.  **Physical Safety**: If Git Status is `Yes`, decision is always **`no`** (cannot cherry-pick what is already there).
 2.  **Ambiguity Safety**: If Git Status is `Likely` or `Needs attention`, decision is always **`(blank)`** (requires human review).
 3.  **Old Release (Safety Catch)**: If Fix Version matches `jira_branched_from_version`:
-    *   If Git Status is `No` ➔ **`yes`** (Identified as missed work in previous release).
+    *   If Git Status is `No` ➔ **`yes`**. Status column updated to **`No (⚠️ Missed in previous release?)`**.
     *   If Git Status is `Yes` ➔ **`no`** (Correctly present in previous release).
 4.  **Target Release**: If Fix Version matches `jira_target_version` ➔ **`yes`**.
 5.  **Mandatory Hotfix**: If Fix Version matches any in `jira_hotfix_versions` ➔ **`yes`**.

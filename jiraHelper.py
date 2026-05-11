@@ -119,7 +119,7 @@ def main():
                                 # we should treat it as a required cherry-pick (Missed work).
                                 if current_status == "No":
                                     ws.cell(row=row_idx, column=decision_col).value = 'yes'
-                                    version_str += " (⚠️ Missed in previous release?)"
+                                    ws.cell(row=row_idx, column=status_col).value = "No (⚠️ Missed in previous release?)"
                                 else:
                                     ws.cell(row=row_idx, column=decision_col).value = 'no'
                             elif any(v == config.jira_target_version for v in versions):
