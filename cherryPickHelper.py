@@ -131,8 +131,8 @@ def main():
 
     for i, idx in enumerate(to_pick_indices):
         row = df.loc[idx]
-        commit_id = row['Commit ID']
-        msg = row['Message']
+        commit_id = row['Commit SHA']
+        msg = row['Description']
         
         print(f"\n[{i + 1}/{len(to_pick_indices)}] Cherry-picking {commit_id[:8]} - {str(msg)[:50]}...")
         
@@ -187,15 +187,17 @@ def main():
         wb = load_workbook(excel_file)
         ws = wb.active
         col_map = {cell.value: cell.column for cell in ws[1]}
-        if 'success' not in col_map:
+        
+        # Ensure 'Result' column exists
+        if 'Result' not in col_map:
             new_col = ws.max_column + 1
-            ws.cell(row=1, column=new_col).value = 'success'
-            col_map['success'] = new_col
+            ws.cell(row=1, column=new_col).value = 'Result'
+            col_map['Result'] = new_col
             
-        success_col = col_map['success']
-        id_col = col_map['Commit ID']
-        in_release_col = col_map.get('In Release?')
-        decision_col = col_map.get('cherry pick?')
+        success_col = col_map['Result']
+        id_col = col_map['Commit SHA']
+        in_release_col = col_map.get('Audit Trail')
+        decision_col = col_map.get('Action')
 
         for row_idx in range(2, ws.max_row + 1):
             commit_id = ws.cell(row=row_idx, column=id_col).value

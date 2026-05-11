@@ -383,18 +383,21 @@ def main():
         matched_rel_url = f"{config.organization_url}/{config.project_name}/_git/{config.repository_name}/pullrequest/{matched_release_pr_id}" if matched_release_pr_id else None
 
         all_final_rows.append({
-            'Commit ID': item['commit'].commit_id,
-            'Author': author,
             'Jira Link': jira,
             'Jira URL': jira_url,
-            'PR Link': f"!{display_pr}" if display_pr else "",
+            'Description': subj,
+            'Audit Trail': is_in_release,
+            'Jira Target': "", # Placeholder for jiraHelper
+            'Action': decision,
+            'Result': "", # Placeholder for cherryPickHelper
+            'Original PR': f"!{display_pr}" if display_pr else "",
             'PR URL': pr_url,
-            'Matched Release PR': f"!{matched_release_pr_id}" if matched_release_pr_id else "",
+            'Release PR': f"!{matched_release_pr_id}" if matched_release_pr_id else "",
             'Matched Rel URL': matched_rel_url,
-            'Date': item['date'],
-            'Message': item['full_msg'],
-            'In Release?': is_in_release,
-            'cherry pick?': decision
+            'Owner': author,
+            'Merged Date': item['date'],
+            'Commit SHA': item['commit'].commit_id,
+            'Full Message': item['full_msg']
         })
 
     print(f"\nDecision Summary:")
@@ -409,41 +412,67 @@ def main():
     ws = wb.active
     ws.title = "Commits"
 
-    # Write Headers
-    headers = ['Commit ID', 'Author', 'Jira Link', 'PR Link', 'Matched Release PR', 'Date', 'Message', 'In Release?', 'cherry pick?']
+    # Write Headers (Human-First Order)
+    headers = [
+        'Jira ID', 'Description', 'Audit Trail', 'Code Present?', 
+        'Jira Target', 'Action', 'Result', 'Original PR', 
+        'Release PR', 'Owner', 'Merged Date', 'Commit SHA', 'Full Message'
+    ]
     for col, header in enumerate(headers, 1):
         ws.cell(row=1, column=col).value = header
 
     # Write Rows
     for row_idx, data in enumerate(all_final_rows, 2):
-        ws.cell(row=row_idx, column=1).value = data['Commit ID']
-        ws.cell(row=row_idx, column=2).value = data['Author']
-        
-        # Jira Link
-        c3 = ws.cell(row=row_idx, column=3)
-        c3.value = data['Jira Link']
+        # 1. Jira ID (Hyperlinked)
+        c1 = ws.cell(row=row_idx, column=1)
+        c1.value = data['Jira Link']
         if data['Jira URL']:
-            c3.hyperlink = data['Jira URL']
-            c3.font = Font(color="0000FF", underline="single")
+            c1.hyperlink = data['Jira URL']
+            c1.font = Font(color="0000FF", underline="single")
 
-        # PR Link
-        c4 = ws.cell(row=row_idx, column=4)
-        c4.value = data['PR Link']
+        # 2. Description
+        ws.cell(row=row_idx, column=2).value = data['Description']
+
+        # 3. Audit Trail (PR Links, etc.)
+        ws.cell(row=row_idx, column=3).value = data['Audit Trail']
+
+        # 4. Code Present? (Placeholder for verifyBranchSync)
+        ws.cell(row=row_idx, column=4).value = ""
+
+        # 5. Jira Target (Placeholder for jiraHelper)
+        ws.cell(row=row_idx, column=5).value = data['Jira Target']
+
+        # 6. Action (Decision)
+        ws.cell(row=row_idx, column=6).value = data['Action']
+
+        # 7. Result (Success/Fail)
+        ws.cell(row=row_idx, column=7).value = data['Result']
+
+        # 8. Original PR (Hyperlinked)
+        c8 = ws.cell(row=row_idx, column=8)
+        c8.value = data['Original PR']
         if data['PR URL']:
-            c4.hyperlink = data['PR URL']
-            c4.font = Font(color="0000FF", underline="single")
+            c8.hyperlink = data['PR URL']
+            c8.font = Font(color="0000FF", underline="single")
 
-        # Matched Release PR
-        c5 = ws.cell(row=row_idx, column=5)
-        c5.value = data['Matched Release PR']
+        # 9. Release PR (Hyperlinked)
+        c9 = ws.cell(row=row_idx, column=9)
+        c9.value = data['Release PR']
         if data['Matched Rel URL']:
-            c5.hyperlink = data['Matched Rel URL']
-            c5.font = Font(color="0000FF", underline="single")
+            c9.hyperlink = data['Matched Rel URL']
+            c9.font = Font(color="0000FF", underline="single")
 
-        ws.cell(row=row_idx, column=6).value = data['Date']
-        ws.cell(row=row_idx, column=7).value = data['Message']
-        ws.cell(row=row_idx, column=8).value = data['In Release?']
-        ws.cell(row=row_idx, column=9).value = data['cherry pick?']
+        # 10. Owner
+        ws.cell(row=row_idx, column=10).value = data['Owner']
+
+        # 11. Merged Date
+        ws.cell(row=row_idx, column=11).value = data['Merged Date']
+
+        # 12. Commit SHA
+        ws.cell(row=row_idx, column=12).value = data['Commit SHA']
+
+        # 13. Full Message
+        ws.cell(row=row_idx, column=13).value = data['Full Message']
 
     excel_file = 'cherrypick_list.xlsx'
     try:

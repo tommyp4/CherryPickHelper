@@ -61,12 +61,12 @@ def main():
 
         # 1. Find columns
         col_map = {cell.value: cell.column for cell in ws[1]}
-        if 'Commit ID' not in col_map:
-            print("❌ Error: 'Commit ID' column not found in Excel.")
+        if 'Commit SHA' not in col_map:
+            print("❌ Error: 'Commit SHA' column not found in Excel.")
             return
 
-        # Ensure 'Patch physically in Release?' column exists
-        col_name = 'Patch physically in Release?'
+        # Ensure 'Code Present?' column exists
+        col_name = 'Code Present?'
         if col_name not in col_map:
             new_col = ws.max_column + 1
             ws.cell(row=1, column=new_col).value = col_name
@@ -74,7 +74,7 @@ def main():
         else:
             target_col = col_map[col_name]
 
-        id_col = col_map['Commit ID']
+        id_col = col_map['Commit SHA']
 
         # 2. Iterate rows and match by Commit ID
         update_count = 0

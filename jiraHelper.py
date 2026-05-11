@@ -44,22 +44,22 @@ def main():
 
         # 1. Find relevant columns
         col_map = {cell.value: cell.column for cell in ws[1]}
-        required = ['Jira Link', 'In Release?', 'cherry pick?']
+        required = ['Jira ID', 'Audit Trail', 'Action']
         if not all(col in col_map for col in required):
             print(f"❌ Error: Required columns {required} not found.")
             return
 
-        # Ensure 'Jira Fix Version' column exists
-        if 'Jira Fix Version' not in col_map:
+        # Ensure 'Jira Target' column exists
+        if 'Jira Target' not in col_map:
             new_col = ws.max_column + 1
-            ws.cell(row=1, column=new_col).value = 'Jira Fix Version'
+            ws.cell(row=1, column=new_col).value = 'Jira Target'
             fix_version_col = new_col
         else:
-            fix_version_col = col_map['Jira Fix Version']
+            fix_version_col = col_map['Jira Target']
 
-        jira_col = col_map['Jira Link']
-        status_col = col_map['In Release?']
-        decision_col = col_map['cherry pick?']
+        jira_col = col_map['Jira ID']
+        status_col = col_map['Audit Trail']
+        decision_col = col_map['Action']
         
         # 2. Cache lookups
         cache = {} 
