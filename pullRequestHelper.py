@@ -331,13 +331,13 @@ def main():
                 # 2. Standard Heuristic Rules
                 g_key = (author, cleaned)
                 if g_key in release_global_inventory:
-                    if dev_global_counts[g_key] == release_global_inventory[g_key]:
+                    if dev_global_counts[g_key] == release_global_inventory[g_key]['count']:
                         is_in_release = "Yes (Exact Match)"
                         match_counts["Exact"] += 1
                     else: is_in_release = "Needs attention (Subject Count Mismatch)"
                 elif jira and jira in release_jira_inventory:
                     if cleaned in release_jira_inventory[jira]:
-                        if dev_jira_counts[jira][cleaned] == release_jira_inventory[jira][cleaned]:
+                        if dev_jira_counts[jira][cleaned] == release_jira_inventory[jira][cleaned]['count']:
                             is_in_release = "Yes (Ticket Match)"
                             match_counts["Ticket"] += 1
                         else: is_in_release = "Needs attention (Ticket Count Mismatch)"
@@ -376,7 +376,7 @@ def main():
         all_final_rows.append({
             'Jira Link': jira,
             'Jira URL': jira_url,
-            'Description': subj,
+            'Description': item['subject'],
             'Audit Trail': is_in_release,
             'Jira Target': "", # Placeholder for jiraHelper
             'Action': decision,
