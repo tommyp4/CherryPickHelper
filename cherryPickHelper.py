@@ -1,4 +1,4 @@
-import os, base64, sys, argparse
+import os, base64, argparse
 import pandas as pd
 from git import Repo, Git, GitCommandError
 import config

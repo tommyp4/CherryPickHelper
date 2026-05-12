@@ -2,26 +2,25 @@ import os
 
 # === CONFIGURATION ===
 organization_url = 'https://dev.azure.com/YOUR_ORG'
-# Load token from environment or fallback
 personal_access_token = os.getenv('AZURE_DEVOPS_PAT', 'YOUR_PAT_HERE')
 project_name = 'YOUR_PROJECT'
 repository_name = 'YOUR_REPO'
-jira_base_url = 'https://YOUR_ORG.atlassian.net/browse/'
-jira_email = 'YOUR_EMAIL@company.com'
-jira_api_token = 'YOUR_JIRA_TOKEN_HERE'
 target_branch = 'YOUR_TARGET_BRANCH'
 local_repo_path = 'C:\\PATH\\TO\\YOUR\\REPO'
 
 # === BRANCH CONFIGURATION ===
-source_branch = 'develop'
-release_branch = 'release/XX.XX.XX'
+main_target_branch = 'develop'
+check_target_branch = 'release/XX.XX.XX'
 cherry_pick_base_branch = 'release/YY.YY.YY'
 
-# 4. Target Fix Versions for automation
+# === JIRA CONFIGURATION ===
+jira_base_url = 'https://YOUR_ORG.atlassian.net/browse/'
+jira_email = 'YOUR_EMAIL@company.com'
+jira_api_token = 'YOUR_JIRA_TOKEN_HERE'
 jira_branched_from_version = 'XX.XX.00'
 jira_target_version = 'XX.XX.01'
 jira_hotfix_versions = ['XX.XX.01', 'XX.XX.02']
 
 # === SEARCH CRITERIA ===
-authors = ['Name One', 'Name Two']
+authors = ['Last, First', 'Last2, First2']
 start_date = 'YYYY-MM-DD HH:MM'

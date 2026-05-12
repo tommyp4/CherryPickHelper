@@ -19,9 +19,6 @@ def main():
     compare_choice = input("❓ Run regression compare at the end? (y/n): ").lower().strip()
     checker_choice = input("❓ Run Author Name Checker? (y/n): ").lower().strip()
 
-    # Check if Excel has blanks
-    blanks_choice = 'n'
-    # We ask upfront so we can pass it down
     blanks_choice = input("❓ Cherry-pick ALL blank entries? (y/n): ").lower().strip()
 
     pause_choice = input("❓ Pause at conflicts for manual resolution? (y/n): ").lower().strip()

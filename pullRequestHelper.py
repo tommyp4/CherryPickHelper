@@ -1,10 +1,11 @@
-import os, base64, re
+import os, re
 import pandas as pd
 from datetime import datetime, timedelta
 from azure.devops.connection import Connection
 from msrest.authentication import BasicAuthentication
 from azure.devops.v7_1.git.models import GitQueryCommitsCriteria, GitVersionDescriptor, GitPullRequestSearchCriteria, GitPullRequestQuery, GitPullRequestQueryInput
 import config
+from shared import get_matched_config_author
 
 def get_first_line(msg):
     if not msg: return ""
@@ -74,8 +75,6 @@ def get_pr_ids_for_commits(git_client, repo_id, project, commit_ids):
             pass # Silent fail for individual chunks
     print(f"  PR Context: Found PRs for {total_found} out of {len(commit_ids)} commits.")
     return results
-
-from shared import get_matched_config_author
 
 def get_commit_files(git_client, repo_id, commit_id, project):
     """Fetches the list of file paths changed in a commit."""
@@ -193,9 +192,6 @@ def main():
             print(f"Warning: Could not scan {branch_name}: {e}")
 
     print(f"Found {len(release_linked_prs)} unique PR links and {len(release_linked_commits)} commit links in release history.")
-    initial_global_inventory = {k: v.copy() for k, v in release_global_inventory.items()}
-    initial_jira_inventory = {jid: {s: v.copy() for s, v in subs.items()} for jid, subs in release_jira_inventory.items()}
-
     # === 2. SCAN DEVELOP (Phase A: Collection & Dependency Analysis) ===
     print(f"Scanning history of '{config.main_target_branch}'...")
     dev_ver = GitVersionDescriptor(version=config.main_target_branch, version_type='branch')

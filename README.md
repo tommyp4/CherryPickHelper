@@ -2,7 +2,7 @@
 
 An automated toolset to identify missing code changes from `develop` and batch cherry-pick them into a release branch, with built-in Jira integration and Excel-based review.
 
-## 📋 Prerequisites
+## Prerequisites
 
 1. **Python 3.12+**
 2. **Required Libraries**:
@@ -13,7 +13,7 @@ An automated toolset to identify missing code changes from `develop` and batch c
 
 ---
 
-## 🛠️ Setup
+## Setup
 
 1. **Environment Variables**: Create a `.env` file in the root directory (do not commit this):
    ```text
@@ -30,7 +30,7 @@ An automated toolset to identify missing code changes from `develop` and batch c
 
 ---
 
-## 🚀 Workflow
+## Workflow
 
 ### All-in-One Command (Recommended)
 You can run the entire workflow in one go using:
@@ -63,17 +63,17 @@ py jiraHelper.py
 
 ### Step 4: Review the Excel File
 1. Open `cherrypick_list.xlsx`.
-2. Review any rows where the `cherry pick?` column is **blank** (Likely matches).
+2. Review any rows where the `Action` column is **blank** (Likely matches).
 3. Type `yes` for any additional commits you want to move.
 4. **Save and Close** the file.
 
-### Step 4: Execute Batch Cherry-Pick
+### Step 5: Execute Batch Cherry-Pick
 This script automates the Git operations in your local repository.
 ```powershell
 py cherryPickHelper.py
 ```
 **Interactive Prompts:**
-- **Cherry-pick blanks?**: Choose once at startup if you want to include rows where `cherry pick?` is empty. (Decision is temporary for the run and not saved).
+- **Cherry-pick blanks?**: Choose once at startup if you want to include rows where `Action` is empty. (Decision is temporary for the run and not saved).
 - **Pause at conflicts?**: Choose if you want the script to pause for manual resolution in VS, or automatically skip conflicted commits (Unattended Mode).
 
 **What it does:**
@@ -81,9 +81,9 @@ py cherryPickHelper.py
 2. Hard resets your local base branch to match the remote exactly.
 3. Deletes your local `target_branch` and recreates it fresh from the base.
 4. Cherry-picks your selected commits one by one.
-5. **Success Tracking**: Updates the `success` column. If a commit is already present, it marks it as `no changes to commit` and updates the `In Release?` status to `Yes`.
+5. **Success Tracking**: Updates the `Result` column. If a commit is already present, it marks it as `no changes to commit` and updates the `Audit Trail` status to `Yes`.
 
-### Step 5: Final Sync Verification (Optional)
+### Step 6: Final Sync Verification (Optional)
 This tool provides the "Final Proof" by comparing actual code patches between branches.
 ```powershell
 py verifyBranchSync.py
@@ -95,10 +95,15 @@ py verifyBranchSync.py
 
 ---
 
-## 📄 File Overview
+## File Overview
 
+- `runFullPipeline.py`: All-in-one interactive pipeline runner.
 - `pullRequestHelper.py`: The data-gathering engine (Scans ADO API).
+- `jiraHelper.py`: Enriches the Excel with Jira Fix Versions and overrides decisions.
 - `cherryPickHelper.py`: The Git automation engine (Uses local Git).
-- `authorNameChecker.py`: Verification utility for config.
+- `verifyBranchSync.py`: Patch-level branch sync verification.
+- `authorNameChecker.py`: Verification utility for config author names.
+- `shared.py`: Shared utility functions.
+- `compare.py`: Regression comparison tool for Excel output.
 - `config.py`: Your local, private configuration.
 - `cherrypick_list.xlsx`: Your interactive work manifest.

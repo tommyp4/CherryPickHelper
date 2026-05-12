@@ -1,4 +1,4 @@
-import os
+import os, base64
 from git import Repo
 import config
 from openpyxl import load_workbook
@@ -21,12 +21,15 @@ def main():
     print(f"Source (Develop): {config.main_target_branch}")
     print("-" * 40)
 
+    _pat_b64 = base64.b64encode(f':{config.personal_access_token}'.encode()).decode()
+    _auth_header = f'http.extraheader=AUTHORIZATION: Basic {_pat_b64}'
+
     print("Fetching latest changes from remote...")
     try:
         git.execute(['git', 'remote', 'prune', 'origin'])
     except Exception:
         pass
-    repo.remotes.origin.fetch()
+    git.execute(['git', '-c', _auth_header, 'fetch', 'origin'])
 
     # Use origin versions to be 100% sure we are comparing against the server state
     upstream = f"origin/{config.cherry_pick_base_branch}"
