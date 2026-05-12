@@ -1,8 +1,6 @@
 import os, base64, sys, argparse
 import pandas as pd
-from git import Repo, GitCommandError
-from azure.devops.connection import Connection
-from msrest.authentication import BasicAuthentication
+from git import Repo, Git, GitCommandError
 import config
 from openpyxl import load_workbook
 
@@ -12,11 +10,6 @@ def main():
     parser.add_argument("--blanks", choices=['y', 'n'], help="Cherry-pick ALL blanks? (y/n)")
     parser.add_argument("--pause", choices=['y', 'n'], help="Pause at conflicts? (y/n)")
     args = parser.parse_args()
-
-    # === AUTHENTICATION ===
-    credentials = BasicAuthentication('', config.personal_access_token)
-    connection = Connection(base_url=config.organization_url, creds=credentials)
-    git_client = connection.clients.get_git_client()
 
     # === CONFIGURATION ===
     excel_file = 'cherrypick_list.xlsx'
@@ -76,16 +69,19 @@ def main():
     print(f"Found {len(to_pick_indices)} commits to process.")
 
     # === PREPARE REPOSITORY ===
-    repo_info = git_client.get_repository(project=config.project_name, repository_id=config.repository_name)
-    remote_url = f'https://user:{config.personal_access_token}@dev.azure.com/alpineitw/VIEW/_git/VIEW'
+    repo_url = f'{config.organization_url}/{config.project_name}/_git/{config.repository_name}'
+    _pat_b64 = base64.b64encode(f':{config.personal_access_token}'.encode()).decode()
+    _auth_header = f'http.extraheader=AUTHORIZATION: Basic {_pat_b64}'
 
     if not os.path.exists(config.local_repo_path):
         print(f"Cloning repository to {config.local_repo_path}...")
-        repo = Repo.clone_from(remote_url, config.local_repo_path)
+        Git().execute(['git', '-c', _auth_header, 'clone', repo_url, config.local_repo_path])
     else:
         print(f"Using existing repository at {config.local_repo_path}")
-        repo = Repo(config.local_repo_path)
-    
+
+    repo = Repo(config.local_repo_path)
+    if config.personal_access_token in repo.remotes.origin.url:
+        repo.remotes.origin.set_url(repo_url)
     git = repo.git
 
     # === ROBUST CLEANUP ===
@@ -105,7 +101,7 @@ def main():
     git.clean('-fd')
 
     print("Fetching all changes from remote...")
-    repo.remotes.origin.fetch()
+    git.execute(['git', '-c', _auth_header, 'fetch', 'origin'])
 
     base_branch = config.cherry_pick_base_branch
     target_branch = config.target_branch
