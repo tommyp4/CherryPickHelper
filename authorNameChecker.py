@@ -4,23 +4,7 @@ from msrest.authentication import BasicAuthentication
 from azure.devops.v7_1.git.models import GitPullRequestSearchCriteria, GitVersionDescriptor, GitQueryCommitsCriteria
 import config
 
-def get_matched_config_author(repo_name, target_list):
-    """
-    Checks if any significant part of a target name exists as a substring 
-    within the repo_name. Returns the matched name from target_list.
-    Handles names of any length (First Middle Last etc).
-    """
-    repo_name_clean = repo_name.lower()
-
-    for target in target_list:
-        # Split target into all its parts (space, comma, etc)
-        target_clean = target.lower().replace(',', ' ')
-        parts = [p for p in target_clean.split() if len(p) > 2] # Ignore short initials/parts
-
-        for p in parts:
-            if p in repo_name_clean:
-                return target
-    return None
+from shared import get_matched_config_author
 
 def main():
     # === AUTHENTICATION ===

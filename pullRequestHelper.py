@@ -75,16 +75,7 @@ def get_pr_ids_for_commits(git_client, repo_id, project, commit_ids):
     print(f"  PR Context: Found PRs for {total_found} out of {len(commit_ids)} commits.")
     return results
 
-def get_matched_config_author(repo_name, target_list):
-    """Returns the config name if matched, else None."""
-    repo_name_clean = repo_name.lower()
-    for target in target_list:
-        target_clean = target.lower().replace(',', ' ')
-        parts = [p for p in target_clean.split() if len(p) > 2]
-        for p in parts:
-            if p in repo_name_clean:
-                return target
-    return None
+from shared import get_matched_config_author
 
 def get_commit_files(git_client, repo_id, commit_id, project):
     """Fetches the list of file paths changed in a commit."""
