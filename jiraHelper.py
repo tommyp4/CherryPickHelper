@@ -3,6 +3,27 @@ from jira import JIRA
 from openpyxl import load_workbook
 import config
 
+def get_jira_decision(versions, current_status, hotfix_set):
+    """Returns (decision, updated_status) based on Jira Fix Versions and git state."""
+    is_physically_present = current_status.startswith("Yes")
+    is_ambiguous = current_status.startswith("Likely") or current_status.startswith("Needs attention")
+
+    if is_physically_present:
+        return 'no', None
+    if is_ambiguous:
+        return '', None
+    if not versions:
+        return 'no', None
+    if any(v == config.jira_branched_from_version for v in versions):
+        if current_status == "No":
+            return 'yes', "No (⚠️ Missed in previous release?)"
+        return 'no', None
+    if any(v == config.jira_target_version for v in versions):
+        return 'yes', None
+    if any(v in hotfix_set for v in versions):
+        return 'yes', None
+    return 'no', None
+
 def extract_jira_id_from_link(link_formula):
     """Extracts the ID from an Excel HYPERLINK formula."""
     if not link_formula or not isinstance(link_formula, str):
@@ -74,32 +95,17 @@ def main():
             cell_value = ws.cell(row=row_idx, column=jira_col).value
             jira_id = extract_jira_id_from_link(cell_value)
             
-            # Physical state check
             current_status = str(ws.cell(row=row_idx, column=status_col).value)
-            is_physically_present = current_status.startswith("Yes")
-            is_likely = current_status.startswith("Likely")
 
             version_str = "No Fix Version"
             if jira_id:
                 if jira_id in cache:
                     version_str = cache[jira_id]
-                    # Update decision column if cached
-                    if is_physically_present:
-                        ws.cell(row=row_idx, column=decision_col).value = 'no'
-                    elif is_likely or current_status.startswith("Needs attention"):
-                        ws.cell(row=row_idx, column=decision_col).value = ''
-                    elif version_str == "No Fix Version":
-                        ws.cell(row=row_idx, column=decision_col).value = 'no'
-                    else:
-                        versions = [v.strip() for v in version_str.split(',')]
-                        if any(v == config.jira_branched_from_version for v in versions):
-                            ws.cell(row=row_idx, column=decision_col).value = 'no'
-                        elif any(v == config.jira_target_version for v in versions):
-                            ws.cell(row=row_idx, column=decision_col).value = 'yes'
-                        elif any(v in hotfix_set for v in versions):
-                            ws.cell(row=row_idx, column=decision_col).value = 'yes'
-                        else:
-                            ws.cell(row=row_idx, column=decision_col).value = 'no'
+                    versions = [v.strip() for v in version_str.split(',')] if version_str != "No Fix Version" else []
+                    decision, new_status = get_jira_decision(versions, current_status, hotfix_set)
+                    ws.cell(row=row_idx, column=decision_col).value = decision
+                    if new_status:
+                        ws.cell(row=row_idx, column=status_col).value = new_status
                 else:
                     try:
                         print(f"  [{row_idx-1}/{total_rows}] Fetching {jira_id}...", end="\r")
@@ -108,34 +114,11 @@ def main():
                         
                         if versions:
                             version_str = ", ".join(versions)
-                            
-                            # DECISION LOGIC
-                            if is_physically_present:
-                                ws.cell(row=row_idx, column=decision_col).value = 'no'
-                            elif is_likely or current_status.startswith("Needs attention"):
-                                ws.cell(row=row_idx, column=decision_col).value = ''
-                            elif any(v == config.jira_branched_from_version for v in versions):
-                                # SAFETY CATCH: If Jira says it's in the old release but Git says it's MISSING,
-                                # we should treat it as a required cherry-pick (Missed work).
-                                if current_status == "No":
-                                    ws.cell(row=row_idx, column=decision_col).value = 'yes'
-                                    ws.cell(row=row_idx, column=status_col).value = "No (⚠️ Missed in previous release?)"
-                                else:
-                                    ws.cell(row=row_idx, column=decision_col).value = 'no'
-                            elif any(v == config.jira_target_version for v in versions):
-                                ws.cell(row=row_idx, column=decision_col).value = 'yes'
-                            elif any(v in hotfix_set for v in versions):
-                                ws.cell(row=row_idx, column=decision_col).value = 'yes'
-                            else:
-                                ws.cell(row=row_idx, column=decision_col).value = 'no'
-                        else:
-                            # NO FIX VERSION ➔ NO CHERRY PICK
-                            if is_physically_present:
-                                ws.cell(row=row_idx, column=decision_col).value = 'no'
-                            elif is_likely or current_status.startswith("Needs attention"):
-                                ws.cell(row=row_idx, column=decision_col).value = ''
-                            else:
-                                ws.cell(row=row_idx, column=decision_col).value = 'no'
+
+                        decision, new_status = get_jira_decision(versions, current_status, hotfix_set)
+                        ws.cell(row=row_idx, column=decision_col).value = decision
+                        if new_status:
+                            ws.cell(row=row_idx, column=status_col).value = new_status
                         
                         cache[jira_id] = version_str
                     except Exception:
