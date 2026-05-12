@@ -37,7 +37,8 @@ def main():
         for c in commits:
             found_repo_names.add(c.author.name)
             found_repo_names.add(c.committer.name)
-    except: pass
+    except Exception:
+        pass
 
     # === VERIFY CONFIG NAMES ===
     matched_targets = set()

@@ -82,7 +82,7 @@ def get_commit_files(git_client, repo_id, commit_id, project):
     try:
         changes = git_client.get_changes(commit_id, repo_id, project=project)
         return {c.item.path for c in changes.changes if c.item and c.item.path}
-    except:
+    except Exception:
         return set()
 
 def extract_all_pr_ids(text):
@@ -130,7 +130,7 @@ def main():
                         # Always fetch full details to ensure we get the complete message body/comment
                         full_c = git_client.get_commit(c.commit_id, repo.id, project=config.project_name)
                         msg = full_c.comment
-                    except:
+                    except Exception:
                         msg = c.comment # Fallback if full fetch fails
 
                     subj = get_first_line(msg)
@@ -149,7 +149,7 @@ def main():
                             try:
                                 pr_detail = git_client.get_pull_request(repo.id, int(release_pr_id), project=config.project_name)
                                 pr_description_cache[release_pr_id] = pr_detail.description if pr_detail.description else ""
-                            except:
+                            except Exception:
                                 pr_description_cache[release_pr_id] = ""
                         
                         pr_body_links = extract_all_pr_ids(pr_description_cache[release_pr_id])
@@ -221,7 +221,7 @@ def main():
                 # Always fetch full details to ensure we get the complete message body/comment
                 full_commit = git_client.get_commit(commit.commit_id, repo.id, project=config.project_name)
                 msg = full_commit.comment.strip()
-            except:
+            except Exception:
                 msg = commit.comment.strip() # Fallback
 
             subject = get_first_line(msg)
@@ -469,7 +469,7 @@ def main():
     try:
         wb.save(excel_file)
         print(f"Successfully saved {len(all_final_rows)} commits to {excel_file}")
-    except: 
+    except Exception:
         print(f"❌ Error: Close the file {excel_file}.")
 
 if __name__ == "__main__":

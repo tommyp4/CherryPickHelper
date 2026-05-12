@@ -114,7 +114,8 @@ def main():
     try:
         if repo.active_branch.name == target_branch: git.checkout(base_branch)
         if target_branch in repo.heads: git.branch('-D', target_branch)
-    except: pass
+    except Exception:
+        pass
 
     print(f"Creating new branch '{target_branch}' from '{base_branch}'...")
     git.checkout('-b', target_branch, base_branch)

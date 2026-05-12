@@ -24,7 +24,8 @@ def main():
     print("Fetching latest changes from remote...")
     try:
         git.execute(['git', 'remote', 'prune', 'origin'])
-    except: pass
+    except Exception:
+        pass
     repo.remotes.origin.fetch()
 
     # Use origin versions to be 100% sure we are comparing against the server state
