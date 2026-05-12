@@ -16,13 +16,14 @@ def main():
     print("========================================\n")
 
     # Step 0: Global Preferences
+    compare_choice = input("❓ Run regression compare at the end? (y/n): ").lower().strip()
     checker_choice = input("❓ Run Author Name Checker? (y/n): ").lower().strip()
-    
+
     # Check if Excel has blanks
     blanks_choice = 'n'
     # We ask upfront so we can pass it down
     blanks_choice = input("❓ Cherry-pick ALL blank entries? (y/n): ").lower().strip()
-    
+
     pause_choice = input("❓ Pause at conflicts for manual resolution? (y/n): ").lower().strip()
 
     # Step 1: Optional Author Name Checker
@@ -42,6 +43,10 @@ def main():
 
     # Step 5: Final Verification
     if not run_command("py verifyBranchSync.py"): return
+
+    # Step 6: Optional Regression Compare
+    if compare_choice == 'y':
+        if not run_command("py compare.py"): return
 
     print("\n" + "="*40)
     print("✅ FULL PIPELINE COMPLETED SUCCESSFULLY")

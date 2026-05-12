@@ -21,20 +21,20 @@ def main():
     print(f"Reading commits from {excel_file}...")
     df = pd.read_excel(excel_file)
 
-    if 'cherry pick?' not in df.columns:
-        print(f"Error: Column 'cherry pick?' not found in {excel_file}")
+    if 'Action' not in df.columns:
+        print(f"Error: Column 'Action' not found in {excel_file}")
         return
 
     # === GLOBAL PROMPTS / ARGUMENTS ===
     # 1. Blanks handling
-    has_blanks = df['cherry pick?'].isna().any() or (df['cherry pick?'].astype(str).str.lower().str.strip() == '').any()
+    has_blanks = df['Action'].isna().any() or (df['Action'].astype(str).str.lower().str.strip() == '').any()
     cherry_pick_blanks = False
     
     if has_blanks:
         if args.blanks:
             user_choice = args.blanks
         else:
-            user_choice = input("\n❓ Found blank entries in 'cherry pick?' column. Cherry-pick ALL blanks? (y/n): ").lower().strip()
+            user_choice = input("\n❓ Found blank entries in 'Action' column. Cherry-pick ALL blanks? (y/n): ").lower().strip()
         
         if user_choice == 'y':
             print("✅ Will cherry-pick blanks.")
@@ -57,8 +57,8 @@ def main():
     # Identify commits to cherry-pick
     to_pick_indices = []
     for idx, row in df.iterrows():
-        val = str(row['cherry pick?']).lower().strip()
-        is_blank = pd.isna(row['cherry pick?']) or val == '' or val == 'nan'
+        val = str(row['Action']).lower().strip()
+        is_blank = pd.isna(row['Action']) or val == '' or val == 'nan'
         if val == 'yes' or (is_blank and cherry_pick_blanks):
             to_pick_indices.append(idx)
 
