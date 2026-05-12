@@ -7,7 +7,7 @@ An automated toolset to identify missing code changes from `develop` and batch c
 1. **Python 3.12+**
 2. **Required Libraries**:
    ```bash
-   pip install pandas openpyxl azure-devops GitPython python-dotenv
+   pip install -r requirements.txt
    ```
 3. **Azure DevOps PAT**: You need a Personal Access Token with `Code (Read & Write)` and `Pull Request (Read & Write)` scopes.
 
