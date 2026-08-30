@@ -24,3 +24,16 @@ jira_hotfix_versions = ['XX.XX.01', 'XX.XX.02']
 # === SEARCH CRITERIA ===
 authors = ['Last, First', 'Last2, First2']
 start_date = 'YYYY-MM-DD HH:MM'
+
+# === RELEASE AUDIT (releaseAudit.py) ===
+# Independent of the keys above. releaseAudit.py runs the opposite direction
+# (what is wrongly PRESENT in a release) and must not disturb the cherry-pick
+# configuration, so it uses its own namespaced keys.
+# Versions are compared numerically, so older/newer is derived rather than
+# enumerated. Anything targeting a LATER release than audit_target_version is
+# reported as a stray.
+audit_release_branch = 'release/XX.XX.XX'           # the branch under audit
+audit_previous_release_branch = 'release/WW.WW.WW'  # the release it branched after
+audit_target_version = 'ProductName XX.XX.00'       # what this branch is meant to ship
+audit_extra_expected_versions = []                  # escape hatch for odd version names
+audit_jira_projects = ['ABC']                       # project keys to match in commit msgs

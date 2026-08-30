@@ -95,6 +95,64 @@ py verifyBranchSync.py
 
 ---
 
+## Reverse Direction: Release Audit
+
+The workflow above answers *"what is missing from the release?"*. `releaseAudit.py`
+answers the opposite question — *"what is present in the release that was never
+meant for it?"* — which is the risk when you branch late and the release inherits
+whatever was sitting on `develop` at branch point.
+
+```powershell
+py releaseAudit.py
+```
+
+This is a **standalone, read-only** tool. It runs `git log` plus Jira lookups, mutates
+no Git state, and does not touch `cherrypick_list.xlsx`. It uses its own `audit_*`
+config keys so it cannot disturb the cherry-pick configuration.
+
+**How it works:**
+1. Enumerates commits in `audit_release_branch` that are not in
+   `audit_previous_release_branch`. This range is deliberately release-to-release —
+   a `develop` comparison cannot see inherited work, because `develop` and the
+   release branch share that history.
+2. Attributes a Jira ticket to each commit, falling back to the parent
+   `Merged PR NNNN: ALP-XXXXX` commit for intermediate commits that carry no ID.
+3. Compares each ticket's Fix Version **numerically** against `audit_target_version`.
+
+**Verdicts:**
+- `STRAY` — targets a *later* release than this branch ships. The finding.
+- `REVIEW` — no ticket, no Fix Version, or a non-mainline product version. Unknown, not clean.
+- `OK` — targets this release, or an earlier one that landed late.
+
+**Flags:**
+- `--dry-run` — validate ticket-attribution coverage without making any Jira calls.
+- `--all` — audit every author. By default only `config.authors` are reported.
+
+**Output:** `release_audit.xlsx`, sorted findings-first.
+
+**Exit codes** (so this can gate a release pipeline):
+
+| Code | Meaning |
+| :--- | :--- |
+| `0` | No strays found. |
+| `1` | Could not complete — bad config, Git/Jira failure, empty commit range, or the report could not be saved. |
+| `2` | Strays found. |
+
+Note that an empty commit range exits `1`, not `0`. It almost always means a
+branch name is wrong, and reporting that as a pass would be a false all-clear.
+
+**Tests:** the classification logic has unit tests. They need no network and no
+extra packages:
+```powershell
+py test_releaseAudit.py
+```
+
+> A `STRAY` is a review candidate, not a revert order. Future-version work can
+> legitimately be present if this release depended on it, and a stray can also mean
+> the *Jira* Fix Version is wrong rather than the code.
+
+---
+
 ## File Overview
 
 - `runFullPipeline.py`: All-in-one interactive pipeline runner.
@@ -102,6 +160,8 @@ py verifyBranchSync.py
 - `jiraHelper.py`: Enriches the Excel with Jira Fix Versions and overrides decisions.
 - `cherryPickHelper.py`: The Git automation engine (Uses local Git).
 - `verifyBranchSync.py`: Patch-level branch sync verification.
+- `releaseAudit.py`: Reverse audit — finds future-release work wrongly present in a release branch.
+- `test_releaseAudit.py`: Dependency-free unit tests for the audit's classification logic.
 - `authorNameChecker.py`: Verification utility for config author names.
 - `shared.py`: Shared utility functions.
 - `compare.py`: Regression comparison tool for Excel output.

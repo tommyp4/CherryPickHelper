@@ -2,3 +2,5 @@
 config.py
 *.xlsx
 cherrypick_list.xlsx
+__pycache__/
+*.pyc
